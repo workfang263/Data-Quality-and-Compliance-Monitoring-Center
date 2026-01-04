@@ -1,0 +1,78 @@
+# Python 运行缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# --- 核心安全防护：绝对不要上传 ---
+config.py
+.env
+config_local.py
+# ------------------------------
+
+# 日志文件
+logs/
+*.log
+logs/.login_token_*
+
+# IDE 编译器配置
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 数据库文件
+*.db
+*.sqlite
+# 拦截所有 SQL 备份，但允许上传 /db 文件夹下的演示脚本
+*.sql
+!/db/schema.sql
+!/db/seeds.sql
+
+# 临时文件与进程锁
+*.tmp
+*.bak
+*.lock
+data_sync.lock
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# --- 运维与敏感测试脚本 ---
+batch_add_stores.py
+add_stores.py
+fetch_report.py
+get_alylike_token.py
+test.py
+backend/config_new.py
+verify_yesterday_data.py
+test_tt_tokens.py
+
+# --- 额外的敏感信息拦截 ---
+# 包含真实 Token 和账户信息的文档（注意：带空格的文件名需要完全匹配）
+"Tik Tok的TOKEN.md"
+"Tik Tok账户和负责人对应关系.txt"
+店铺列表_待填写广告账户ID.csv
+TikTok项目进度.md
+get_fb_ad_accounts.py
+test_fb_account_access.py
+
+# 包含敏感信息的目录
+校验当天/
+
+# 脱敏改造相关文档（包含敏感信息说明）
+敏感信息脱敏检查报告.md
+硬编码敏感信息扫描报告.md
+脱敏改造*.md
+最终验证报告.md
+环境变量迁移指南.md
+GitHub上传准备完成报告.md
+MySQL连接命令.md
+系统配置信息汇总.md
+紧急安全处理命令.txt

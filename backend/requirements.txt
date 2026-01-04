@@ -1,0 +1,20 @@
+# FastAPI Backend - Python Dependencies
+
+# FastAPI framework
+fastapi>=0.104.1
+
+# ASGI server (for running FastAPI)
+uvicorn[standard]>=0.24.0
+
+# MySQL database connection (same as old system)
+pymysql>=1.1.0
+
+# Data validation library (core dependency of FastAPI)
+pydantic>=2.5.0
+
+# Handle form data (multipart/form-data, for file uploads, etc.)
+python-multipart>=0.0.6
+
+# JWT token for authentication
+PyJWT>=2.8.0
+

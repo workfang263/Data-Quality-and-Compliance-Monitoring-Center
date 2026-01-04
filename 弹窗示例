@@ -1,0 +1,281 @@
+App.tsx文件内容:
+import React, { useState } from 'react';
+import { LayoutDashboard, BarChart3 } from 'lucide-react';
+import { Button } from './components/Button';
+import { Modal } from './components/Modal';
+import { SalesChart } from './components/SalesChart';
+
+export default function App() {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const openModal = () => setIsModalOpen(true);
+  const closeModal = () => setIsModalOpen(false);
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-br from-slate-50 to-slate-100">
+      
+      {/* Main Content Card */}
+      <div className="max-w-xl w-full bg-white rounded-2xl shadow-xl border border-slate-200/60 p-12 text-center transition-all hover:shadow-2xl">
+        <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+          <LayoutDashboard className="w-8 h-8 text-indigo-600" />
+        </div>
+        
+        <h1 className="text-3xl font-bold text-slate-900 mb-4 tracking-tight">
+          数据可视化面板
+        </h1>
+        
+        <p className="text-slate-500 mb-10 text-lg leading-relaxed">
+          点击下方按钮查看本年度的销售趋势折线图。
+          <br />
+          React + Tailwind + Recharts 演示。
+        </p>
+
+        <div className="flex justify-center">
+          <Button onClick={openModal} icon={<BarChart3 className="w-5 h-5" />}>
+            查看折线图数据
+          </Button>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <footer className="mt-12 text-slate-400 text-sm">
+        © 2024 Analytics Demo. Built with React.
+      </footer>
+
+      {/* Modal containing the Chart */}
+      <Modal 
+        isOpen={isModalOpen} 
+        onClose={closeModal} 
+        title="2024年度销售趋势分析"
+      >
+        <div className="w-full h-[400px]">
+          <SalesChart />
+        </div>
+        <div className="mt-6 text-sm text-slate-500 text-center">
+          数据来源：系统自动生成模拟数据
+        </div>
+      </Modal>
+
+    </div>
+  );
+}
+
+
+Button.tsx文件内容:
+import React from 'react';
+
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: 'primary' | 'secondary' | 'outline';
+  icon?: React.ReactNode;
+}
+
+export const Button: React.FC<ButtonProps> = ({ 
+  children, 
+  variant = 'primary', 
+  className = '', 
+  icon,
+  ...props 
+}) => {
+  const baseStyles = "inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 active:scale-95";
+  
+  const variants = {
+    primary: "bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 focus:ring-indigo-500",
+    secondary: "bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-sm focus:ring-slate-200",
+    outline: "bg-transparent border-2 border-indigo-600 text-indigo-600 hover:bg-indigo-50 focus:ring-indigo-500"
+  };
+
+  return (
+    <button 
+      className={`${baseStyles} ${variants[variant]} ${className}`}
+      {...props}
+    >
+      {icon && <span>{icon}</span>}
+      {children}
+    </button>
+  );
+};
+
+Modal.tsx文件内容:
+import React, { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
+
+interface ModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title?: string;
+  children: React.ReactNode;
+}
+
+export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const [shouldRender, setShouldRender] = useState(false);
+
+  // Handle animation lifecycle
+  useEffect(() => {
+    if (isOpen) {
+      setShouldRender(true);
+      // Small timeout to allow DOM render before opacity transition
+      const timer = setTimeout(() => setIsVisible(true), 10);
+      return () => clearTimeout(timer);
+    } else {
+      setIsVisible(false);
+      const timer = setTimeout(() => setShouldRender(false), 300); // Wait for transition to finish
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (isOpen) window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
+
+  if (!shouldRender) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+      {/* Backdrop */}
+      <div 
+        className={`absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity duration-300 ease-in-out ${
+          isVisible ? 'opacity-100' : 'opacity-0'
+        }`}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Modal Card */}
+      <div 
+        className={`relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl transform transition-all duration-300 ease-out flex flex-col max-h-[90vh] ${
+          isVisible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-4'
+        }`}
+        role="dialog"
+        aria-modal="true"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+          <h2 className="text-xl font-semibold text-slate-800">
+            {title || 'Modal'}
+          </h2>
+          <button 
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            aria-label="Close modal"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 overflow-y-auto">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+SalesChart.tsx文件内容:
+import React from 'react';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Area,
+  ComposedChart
+} from 'recharts';
+
+// Mock Data
+const data = [
+  { name: '一月', sales: 4000, revenue: 2400 },
+  { name: '二月', sales: 3000, revenue: 1398 },
+  { name: '三月', sales: 2000, revenue: 9800 },
+  { name: '四月', sales: 2780, revenue: 3908 },
+  { name: '五月', sales: 1890, revenue: 4800 },
+  { name: '六月', sales: 2390, revenue: 3800 },
+  { name: '七月', sales: 3490, revenue: 4300 },
+  { name: '八月', sales: 4200, revenue: 5100 },
+  { name: '九月', sales: 3800, revenue: 4900 },
+  { name: '十月', sales: 5600, revenue: 6200 },
+  { name: '十一月', sales: 6100, revenue: 7400 },
+  { name: '十二月', sales: 7200, revenue: 8100 },
+];
+
+export const SalesChart: React.FC = () => {
+  return (
+    <div className="w-full h-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart
+          data={data}
+          margin={{
+            top: 20,
+            right: 30,
+            left: 20,
+            bottom: 10,
+          }}
+        >
+          <defs>
+            <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.15}/>
+              <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+            </linearGradient>
+          </defs>
+          
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+          
+          <XAxis 
+            dataKey="name" 
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: '#64748b', fontSize: 12 }}
+            dy={10}
+          />
+          
+          <YAxis 
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: '#64748b', fontSize: 12 }}
+            dx={-10}
+          />
+          
+          <Tooltip 
+            contentStyle={{ 
+              backgroundColor: '#fff', 
+              borderRadius: '8px', 
+              border: 'none', 
+              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' 
+            }}
+            cursor={{ stroke: '#6366f1', strokeWidth: 1, strokeDasharray: '4 4' }}
+          />
+          
+          {/* Subtle area fill for aesthetics */}
+          <Area 
+            type="monotone" 
+            dataKey="sales" 
+            stroke="none" 
+            fill="url(#colorSales)" 
+          />
+          
+          {/* Main Line */}
+          <Line 
+            type="monotone" 
+            dataKey="sales" 
+            stroke="#6366f1" 
+            strokeWidth={3} 
+            dot={{ fill: '#fff', stroke: '#6366f1', strokeWidth: 2, r: 4 }}
+            activeDot={{ r: 6, strokeWidth: 0, fill: '#4f46e5' }}
+            animationDuration={1500}
+            name="销售额"
+          />
+          
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};

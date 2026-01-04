@@ -1,0 +1,206 @@
+{
+  "description": "前端演示数据（Mock数据）",
+  "generated_at": "2026-01-04",
+  "data_range": "过去90天的小时级数据",
+  "note": "如果后端未启动，前端可以直接读取此文件展示图表效果",
+  "data": [
+    {
+      "time_hour": "2025-10-07T00:00:00",
+      "total_gmv": 1250.50,
+      "total_orders": 12,
+      "total_visitors": 45,
+      "total_spend": 320.00,
+      "avg_order_value": 104.21
+    },
+    {
+      "time_hour": "2025-10-07T01:00:00",
+      "total_gmv": 980.30,
+      "total_orders": 9,
+      "total_visitors": 38,
+      "total_spend": 280.50,
+      "avg_order_value": 108.92
+    },
+    {
+      "time_hour": "2025-10-07T02:00:00",
+      "total_gmv": 750.20,
+      "total_orders": 7,
+      "total_visitors": 32,
+      "total_spend": 220.00,
+      "avg_order_value": 107.17
+    },
+    {
+      "time_hour": "2025-10-07T03:00:00",
+      "total_gmv": 620.10,
+      "total_orders": 6,
+      "total_visitors": 28,
+      "total_spend": 190.00,
+      "avg_order_value": 103.35
+    },
+    {
+      "time_hour": "2025-10-07T04:00:00",
+      "total_gmv": 580.40,
+      "total_orders": 5,
+      "total_visitors": 25,
+      "total_spend": 175.00,
+      "avg_order_value": 116.08
+    },
+    {
+      "time_hour": "2025-10-07T05:00:00",
+      "total_gmv": 650.60,
+      "total_orders": 6,
+      "total_visitors": 30,
+      "total_spend": 200.00,
+      "avg_order_value": 108.43
+    },
+    {
+      "time_hour": "2025-10-07T06:00:00",
+      "total_gmv": 820.80,
+      "total_orders": 8,
+      "total_visitors": 35,
+      "total_spend": 250.00,
+      "avg_order_value": 102.60
+    },
+    {
+      "time_hour": "2025-10-07T07:00:00",
+      "total_gmv": 1100.20,
+      "total_orders": 11,
+      "total_visitors": 42,
+      "total_spend": 310.00,
+      "avg_order_value": 100.02
+    },
+    {
+      "time_hour": "2025-10-07T08:00:00",
+      "total_gmv": 1350.50,
+      "total_orders": 13,
+      "total_visitors": 48,
+      "total_spend": 380.00,
+      "avg_order_value": 103.88
+    },
+    {
+      "time_hour": "2025-10-07T09:00:00",
+      "total_gmv": 1580.70,
+      "total_orders": 15,
+      "total_visitors": 55,
+      "total_spend": 420.00,
+      "avg_order_value": 105.38
+    },
+    {
+      "time_hour": "2025-10-07T10:00:00",
+      "total_gmv": 1820.90,
+      "total_orders": 18,
+      "total_visitors": 62,
+      "total_spend": 480.00,
+      "avg_order_value": 101.16
+    },
+    {
+      "time_hour": "2025-10-07T11:00:00",
+      "total_gmv": 2100.30,
+      "total_orders": 20,
+      "total_visitors": 68,
+      "total_spend": 550.00,
+      "avg_order_value": 105.02
+    },
+    {
+      "time_hour": "2025-10-07T12:00:00",
+      "total_gmv": 2450.60,
+      "total_orders": 24,
+      "total_visitors": 75,
+      "total_spend": 620.00,
+      "avg_order_value": 102.11
+    },
+    {
+      "time_hour": "2025-10-07T13:00:00",
+      "total_gmv": 2280.40,
+      "total_orders": 22,
+      "total_visitors": 72,
+      "total_spend": 590.00,
+      "avg_order_value": 103.65
+    },
+    {
+      "time_hour": "2025-10-07T14:00:00",
+      "total_gmv": 2050.20,
+      "total_orders": 19,
+      "total_visitors": 65,
+      "total_spend": 530.00,
+      "avg_order_value": 107.91
+    },
+    {
+      "time_hour": "2025-10-07T15:00:00",
+      "total_gmv": 1920.80,
+      "total_orders": 18,
+      "total_visitors": 60,
+      "total_spend": 500.00,
+      "avg_order_value": 106.71
+    },
+    {
+      "time_hour": "2025-10-07T16:00:00",
+      "total_gmv": 1750.50,
+      "total_orders": 17,
+      "total_visitors": 58,
+      "total_spend": 470.00,
+      "avg_order_value": 103.03
+    },
+    {
+      "time_hour": "2025-10-07T17:00:00",
+      "total_gmv": 1620.30,
+      "total_orders": 15,
+      "total_visitors": 52,
+      "total_spend": 440.00,
+      "avg_order_value": 108.02
+    },
+    {
+      "time_hour": "2025-10-07T18:00:00",
+      "total_gmv": 1480.70,
+      "total_orders": 14,
+      "total_visitors": 48,
+      "total_spend": 410.00,
+      "avg_order_value": 105.76
+    },
+    {
+      "time_hour": "2025-10-07T19:00:00",
+      "total_gmv": 1350.20,
+      "total_orders": 13,
+      "total_visitors": 45,
+      "total_spend": 380.00,
+      "avg_order_value": 103.86
+    },
+    {
+      "time_hour": "2025-10-07T20:00:00",
+      "total_gmv": 1200.50,
+      "total_orders": 11,
+      "total_visitors": 40,
+      "total_spend": 350.00,
+      "avg_order_value": 109.14
+    },
+    {
+      "time_hour": "2025-10-07T21:00:00",
+      "total_gmv": 1080.30,
+      "total_orders": 10,
+      "total_visitors": 38,
+      "total_spend": 320.00,
+      "avg_order_value": 108.03
+    },
+    {
+      "time_hour": "2025-10-07T22:00:00",
+      "total_gmv": 950.60,
+      "total_orders": 9,
+      "total_visitors": 35,
+      "total_spend": 290.00,
+      "avg_order_value": 105.62
+    },
+    {
+      "time_hour": "2025-10-07T23:00:00",
+      "total_gmv": 820.40,
+      "total_orders": 8,
+      "total_visitors": 32,
+      "total_spend": 260.00,
+      "avg_order_value": 102.55
+    }
+  ],
+  "summary": {
+    "total_records": 24,
+    "date_range": "2025-10-07",
+    "note": "这是示例数据，完整90天数据请导入 db/seeds.sql 到数据库"
+  }
+}
+
