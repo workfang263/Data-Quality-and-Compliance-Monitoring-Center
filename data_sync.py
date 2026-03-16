@@ -331,19 +331,11 @@ def sync_store_data(shop_domain: str, access_token: str,
         if orders_api_failed:
             orders_data = []
         
-        # 如果两个关键API都失败了，自动禁用店铺
+        # 如果两个关键API都失败了，仅记录错误并跳过，不自动禁用店铺（由人工在后台决定是否禁用）
         if orders_api_failed and analysis_api_failed:
-            disable_reason = f"订单API和数据分析API重试2次后均失败（日期：{target_date}）"
-            if db.disable_store(shop_domain, disable_reason):
-                # 在控制台和日志中明确告知
-                print(f"\n🔴 已自动禁用店铺: {shop_domain}")
-                print(f"   原因: {disable_reason}\n")
-                logger.warning(f"🔴 已自动禁用店铺: {shop_domain}，原因: {disable_reason}")
-            else:
-                logger.error(f"❌ 禁用店铺失败: {shop_domain}")
-            
-            # 设置错误信息并返回
-            result['error'] = f"API调用失败，店铺已自动禁用: {disable_reason}"
+            fail_reason = f"订单API和数据分析API重试2次后均失败（日期：{target_date}）"
+            logger.error(f"店铺 {shop_domain} API 均失败，本次跳过（未禁用店铺）: {fail_reason}")
+            result['error'] = f"API调用失败，本次跳过: {fail_reason}"
             result['success'] = False
             return result
         elif orders_api_failed:
@@ -458,95 +450,88 @@ def sync_store_data(shop_domain: str, access_token: str,
                         'reason': f'未来时间订单（订单时间={order_dt.strftime("%Y-%m-%d %H:%M:%S")}）'
                     })
                     continue
-                    
-                    # API 已经按 placed_at（支付时间）筛选好了，返回的订单都在目标日期范围内
-                    # 无需再次按日期筛选，直接按小时聚合即可
-                    # 按小时聚合（使用placed_at的小时，即支付时间的小时）
-                    hour_key = order_dt.replace(minute=0, second=0, microsecond=0)
-                    
-                    # 先解析订单金额，确保订单数和销售额同步累加
-                    # 获取订单的实际支付价格（total_price字段）
-                    total_price_str = order.get('total_price') or order.get('total_price_set', {}).get('shop_money', {}).get('amount')
-                    
-                    # 如果金额字段完全缺失，记录详细错误并跳过
-                    if total_price_str is None:
-                        order_id = order.get('id', 'unknown')
-                        logger.warning(
-                            f"订单金额字段缺失，订单已跳过 - "
-                            f"店铺: {shop_domain}, "
-                            f"目标日期: {target_date}, "
-                            f"订单ID: {order_id}, "
-                            f"placed_at: {order.get('placed_at', '')}, "
-                            f"total_price: {order.get('total_price')}, "
-                            f"total_price_set: {order.get('total_price_set')}"
-                        )
-                        continue
-                    
-                    try:
-                        # 如果total_price是字符串，尝试解析
-                        if isinstance(total_price_str, str):
-                            # 移除可能的货币符号和空格
-                            total_price_str = total_price_str.strip().replace('$', '').replace(',', '')
-                            # 如果处理后的字符串为空，使用0
-                            if not total_price_str:
-                                total_price_str = '0'
-                        
-                        total_price = float(total_price_str)
-                        
-                        # 验证金额是否有效
-                        if total_price < 0:
-                            order_id = order.get('id', 'unknown')
-                            logger.warning(
-                                f"订单价格异常（负数）: {total_price}, "
-                                f"店铺: {shop_domain}, "
-                                f"目标日期: {target_date}, "
-                                f"订单ID: {order_id}, "
-                                f"原始值: {order.get('total_price')}"
-                            )
-                            # 负数价格也累加，但记录警告
-                        
-                        if total_price == 0:
-                            order_id = order.get('id', 'unknown')
-                            logger.warning(
-                                f"订单价格为零，订单已记录但金额为0 - "
-                                f"店铺: {shop_domain}, "
-                                f"目标日期: {target_date}, "
-                                f"订单ID: {order_id}"
-                            )
-                        
-                        # 金额解析成功，同时累加订单数和销售额
-                        hourly_data[hour_key]['orders'] += 1  # 订单数：主要数据源
-                        hourly_data[hour_key]['sales'] += total_price  # 销售额：主要数据源
-                        processed_orders += 1
-                        
-                    except (ValueError, TypeError) as e:
-                        # 价格解析失败，订单数和销售额都不累加，但记录详细错误信息
-                        skipped_orders.append({
-                            'order_id': order_id,
-                            'placed_at': order.get('placed_at', ''),
-                            'reason': f'价格解析失败: {str(e)}',
-                            'total_price': order.get('total_price'),
-                            'total_price_set': order.get('total_price_set')
-                        })
-                        logger.warning(
-                            f"订单价格解析失败，订单已跳过 - "
-                            f"店铺: {shop_domain}, "
-                            f"目标日期: {target_date}, "
-                            f"订单ID: {order_id}, "
-                            f"placed_at: {order.get('placed_at', '')}, "
-                            f"total_price原始值: {order.get('total_price')}, "
-                            f"total_price_set: {order.get('total_price_set')}, "
-                            f"错误: {e}"
-                        )
-                        # 订单数和销售额都不累加，继续处理下一个订单
-                        continue
+                
+                # API 已经按 placed_at（支付时间）筛选好了，返回的订单都在目标日期范围内
+                # 无需再次按日期筛选，直接按小时聚合即可
+                # 按小时聚合（使用placed_at的小时，即支付时间的小时）
+                hour_key = order_dt.replace(minute=0, second=0, microsecond=0)
+                
+                # 先解析订单金额，确保订单数和销售额同步累加
+                # 获取订单的实际支付价格（total_price字段）
+                total_price_str = order.get('total_price') or order.get('total_price_set', {}).get('shop_money', {}).get('amount')
+                
+                # 如果金额字段完全缺失，记录详细错误并跳过
+                if total_price_str is None:
+                    order_id = order.get('id', 'unknown')
                     logger.warning(
-                        f"解析订单数据项失败，订单已跳过 - "
+                        f"订单金额字段缺失，订单已跳过 - "
                         f"店铺: {shop_domain}, "
                         f"目标日期: {target_date}, "
                         f"订单ID: {order_id}, "
-                        f"placed_at: {order.get('placed_at')}, "
-                        f"created_at: {order.get('created_at')}, "
+                        f"placed_at: {order.get('placed_at', '')}, "
+                        f"total_price: {order.get('total_price')}, "
+                        f"total_price_set: {order.get('total_price_set')}"
+                    )
+                    skipped_orders.append({
+                        'order_id': order_id,
+                        'reason': '订单金额字段缺失'
+                    })
+                    continue
+                
+                try:
+                    # 如果total_price是字符串，尝试解析
+                    if isinstance(total_price_str, str):
+                        # 移除可能的货币符号和空格
+                        total_price_str = total_price_str.strip().replace('$', '').replace(',', '')
+                        # 如果处理后的字符串为空，使用0
+                        if not total_price_str:
+                            total_price_str = '0'
+                    
+                    total_price = float(total_price_str)
+                    
+                    # 验证金额是否有效
+                    if total_price < 0:
+                        order_id = order.get('id', 'unknown')
+                        logger.warning(
+                            f"订单价格异常（负数）: {total_price}, "
+                            f"店铺: {shop_domain}, "
+                            f"目标日期: {target_date}, "
+                            f"订单ID: {order_id}, "
+                            f"原始值: {order.get('total_price')}"
+                        )
+                        # 负数价格也累加，但记录警告
+                    
+                    if total_price == 0:
+                        order_id = order.get('id', 'unknown')
+                        logger.warning(
+                            f"订单价格为零，订单已记录但金额为0 - "
+                            f"店铺: {shop_domain}, "
+                            f"目标日期: {target_date}, "
+                            f"订单ID: {order_id}"
+                        )
+                    
+                    # 金额解析成功，同时累加订单数和销售额
+                    hourly_data[hour_key]['orders'] += 1  # 订单数：主要数据源
+                    hourly_data[hour_key]['sales'] += total_price  # 销售额：主要数据源
+                    processed_orders += 1
+                    
+                except (ValueError, TypeError) as e:
+                    # 价格解析失败，订单数和销售额都不累加，但记录详细错误信息
+                    skipped_orders.append({
+                        'order_id': order_id,
+                        'placed_at': order.get('placed_at', ''),
+                        'reason': f'价格解析失败: {str(e)}',
+                        'total_price': order.get('total_price'),
+                        'total_price_set': order.get('total_price_set')
+                    })
+                    logger.warning(
+                        f"订单价格解析失败，订单已跳过 - "
+                        f"店铺: {shop_domain}, "
+                        f"目标日期: {target_date}, "
+                        f"订单ID: {order_id}, "
+                        f"placed_at: {order.get('placed_at', '')}, "
+                        f"total_price原始值: {order.get('total_price')}, "
+                        f"total_price_set: {order.get('total_price_set')}, "
                         f"错误: {e}"
                     )
                     continue
@@ -1344,20 +1329,11 @@ def sync_store_data_for_ten_minutes(
         # 检查数据分析API是否失败（返回None表示API调用失败）
         analysis_api_failed = (analysis_data is None)
         
-        # 如果两个关键API都失败了，自动禁用店铺
+        # 如果两个关键API都失败了，仅记录错误并跳过，不自动禁用店铺（由人工在后台决定是否禁用）
         if orders_api_failed and analysis_api_failed:
-            db = Database()
-            disable_reason = f"订单API和数据分析API重试2次后均失败（时间段：{start_time} - {end_time}）"
-            if db.disable_store(shop_domain, disable_reason):
-                # 在控制台和日志中明确告知
-                print(f"\n🔴 已自动禁用店铺: {shop_domain}")
-                print(f"   原因: {disable_reason}\n")
-                logger.warning(f"🔴 已自动禁用店铺: {shop_domain}，原因: {disable_reason}")
-            else:
-                logger.error(f"❌ 禁用店铺失败: {shop_domain}")
-            
-            # 设置错误信息并返回
-            result['error'] = f"API调用失败，店铺已自动禁用: {disable_reason}"
+            fail_reason = f"订单API和数据分析API重试2次后均失败（时间段：{start_time} - {end_time}）"
+            logger.error(f"店铺 {shop_domain} API 均失败，本次跳过（未禁用店铺）: {fail_reason}")
+            result['error'] = f"API调用失败，本次跳过: {fail_reason}"
             result['success'] = False
             return result
         elif orders_api_failed:
