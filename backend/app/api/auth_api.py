@@ -126,17 +126,20 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     if user_role == "admin":
         can_view_dashboard = True
         can_edit_mappings = True
+        can_view_store_ops = True
     else:
         extended_permissions = get_db().get_user_extended_permissions(user.get("id"))
         can_view_dashboard = extended_permissions.get("can_view_dashboard", False)
         can_edit_mappings = extended_permissions.get("can_edit_mappings", False)
+        can_view_store_ops = extended_permissions.get("can_view_store_ops", False)
     
     return {
         "id": user.get("id"),
         "username": user.get("username"),
         "role": user.get("role"),
         "can_view_dashboard": can_view_dashboard,
-        "can_edit_mappings": can_edit_mappings
+        "can_edit_mappings": can_edit_mappings,
+        "can_view_store_ops": can_view_store_ops,
     }
 
 
@@ -189,10 +192,12 @@ async def login(request_data: LoginRequest = Body(...)) -> Dict[str, Any]:
         if user_role == "admin":
             can_view_dashboard = True
             can_edit_mappings = True
+            can_view_store_ops = True
         else:
             extended_permissions = get_db().get_user_extended_permissions(user.get("id"))
             can_view_dashboard = extended_permissions.get("can_view_dashboard", False)
             can_edit_mappings = extended_permissions.get("can_edit_mappings", False)
+            can_view_store_ops = extended_permissions.get("can_view_store_ops", False)
         
         return {
             "code": 200,
@@ -204,7 +209,8 @@ async def login(request_data: LoginRequest = Body(...)) -> Dict[str, Any]:
                     "username": user.get("username"),
                     "role": user.get("role"),
                     "can_view_dashboard": can_view_dashboard,
-                    "can_edit_mappings": can_edit_mappings
+                    "can_edit_mappings": can_edit_mappings,
+                    "can_view_store_ops": can_view_store_ops,
                 }
             }
         }

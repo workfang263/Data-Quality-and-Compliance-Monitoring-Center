@@ -12,6 +12,8 @@ import router from './router'
 // 导入Element Plus
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
+// Tailwind 放在所有全局 CSS 之后，避免被 style.css / Element Plus 覆盖布局与颜色类
+import './tailwind.css'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs' // 中文语言包
 
 // 创建Vue应用实例
