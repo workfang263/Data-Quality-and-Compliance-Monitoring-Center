@@ -11,6 +11,7 @@
         <el-menu-item index="/dashboard">看板</el-menu-item>
         <el-menu-item index="/owners">负责人汇总</el-menu-item>
         <el-menu-item index="/mappings">映射编辑</el-menu-item>
+        <el-menu-item v-if="canStoreOps" index="/store-ops">店铺运营</el-menu-item>
         <el-menu-item v-if="isAdmin" index="/permissions">权限管理</el-menu-item>
       </el-menu>
     </div>
@@ -43,6 +44,7 @@ const route = useRoute()
 
 const username = ref('')
 const userRole = ref('')
+const canViewStoreOps = ref(false)
 
 // 当前激活的菜单项
 const activeMenu = computed(() => {
@@ -54,6 +56,11 @@ const isAdmin = computed(() => {
   return userRole.value === 'admin'
 })
 
+// 店铺运营菜单：管理员或显式授权
+const canStoreOps = computed(() => {
+  return userRole.value === 'admin' || canViewStoreOps.value === true
+})
+
 // 加载用户信息
 const loadUserInfo = () => {
   const userStr = localStorage.getItem('user')
@@ -62,6 +69,7 @@ const loadUserInfo = () => {
       const user = JSON.parse(userStr)
       username.value = user.username || '用户'
       userRole.value = user.role || 'user'
+      canViewStoreOps.value = user.can_view_store_ops === true
     } catch (e) {
       username.value = '用户'
       userRole.value = 'user'

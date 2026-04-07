@@ -76,6 +76,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/store-ops',
+    name: 'StoreOps',
+    component: () => import('../views/StoreOps.vue'),
+    meta: {
+      title: '店铺运营',
+      requiresAuth: true,
+      requiresStoreOps: true
+    }
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('../views/NotFound.vue'),
@@ -131,6 +141,27 @@ router.beforeEach((to, from, next) => {
         next('/login')
         return
       }
+    }
+
+    // 店铺运营：管理员或 can_view_store_ops
+    if (to.meta.requiresStoreOps) {
+      const userStr = localStorage.getItem('user')
+      if (!userStr) {
+        next('/login')
+        return
+      }
+      try {
+        const user = JSON.parse(userStr)
+        if (user.role === 'admin' || user.can_view_store_ops === true) {
+          next()
+          return
+        }
+      } catch (e) {
+        next('/login')
+        return
+      }
+      next('/dashboard')
+      return
     }
   }
   

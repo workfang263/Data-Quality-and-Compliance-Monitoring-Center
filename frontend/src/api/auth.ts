@@ -11,6 +11,9 @@ export interface UserInfo {
   id: number
   username: string
   role: string
+  can_view_dashboard?: boolean
+  can_edit_mappings?: boolean
+  can_view_store_ops?: boolean
 }
 
 /**

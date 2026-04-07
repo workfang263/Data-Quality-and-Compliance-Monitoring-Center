@@ -13,6 +13,7 @@ export interface PermissionUser {
   role: string
   can_view_dashboard?: boolean
   can_edit_mappings?: boolean
+  can_view_store_ops?: boolean
 }
 
 /**
@@ -21,6 +22,7 @@ export interface PermissionUser {
 export interface ExtendedPermissions {
   can_view_dashboard: boolean
   can_edit_mappings: boolean
+  can_view_store_ops: boolean
 }
 
 /**
@@ -58,6 +60,7 @@ export interface UpdatePermissionsParams {
   owners: string[]
   can_view_dashboard?: boolean
   can_edit_mappings?: boolean
+  can_view_store_ops?: boolean
 }
 
 export function updateUserPermissions(

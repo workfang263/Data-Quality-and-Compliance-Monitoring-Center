@@ -3,7 +3,9 @@
 这是FastAPI应用的主入口文件，负责：
 1. 创建FastAPI应用实例
 2. 配置CORS（允许Vue前端访问）
-3. 注册API路由
+3. 注册API路由（含看板、权限、店铺运营/员工归因 store-ops 等，无需单独进程）
+
+启动与重启：见 backend/README.md
 """
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -86,7 +88,14 @@ async def log_requests(request: Request, call_next):
         )
 
 # 注册API路由
-from app.api import dashboard_api, owners_api, mappings_api, auth_api, permissions_api
+from app.api import (
+    dashboard_api,
+    owners_api,
+    mappings_api,
+    auth_api,
+    permissions_api,
+    store_ops_api,
+)
 
 # 注册看板数据API路由
 app.include_router(dashboard_api.router)
@@ -102,6 +111,9 @@ app.include_router(auth_api.router)
 
 # 注册权限管理API路由
 app.include_router(permissions_api.router)
+
+# 店铺运营 / 员工归因
+app.include_router(store_ops_api.router)
 
 
 # 应用启动时的初始化操作

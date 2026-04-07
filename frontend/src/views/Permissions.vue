@@ -64,6 +64,9 @@
                   <el-checkbox v-model="canEditMappings" @change="handleExtendedPermissionsChange">
                     允许编辑映射
                   </el-checkbox>
+                  <el-checkbox v-model="canViewStoreOps" @change="handleExtendedPermissionsChange">
+                    允许查看店铺运营与员工归因
+                  </el-checkbox>
                 </div>
               </div>
               
@@ -109,8 +112,10 @@ const selectedOwners = ref<string[]>([])
 const originalOwners = ref<string[]>([]) // 原始权限列表，用于判断是否有变化
 const canViewDashboard = ref(false)
 const canEditMappings = ref(false)
+const canViewStoreOps = ref(false)
 const originalCanViewDashboard = ref(false)
 const originalCanEditMappings = ref(false)
+const originalCanViewStoreOps = ref(false)
 
 // 状态
 const loading = ref(false)
@@ -124,8 +129,9 @@ const hasChanges = computed(() => {
   const ownersChanged = [...selectedOwners.value].sort().join(',') !== [...originalOwners.value].sort().join(',')
   const dashboardChanged = canViewDashboard.value !== originalCanViewDashboard.value
   const mappingsChanged = canEditMappings.value !== originalCanEditMappings.value
+  const storeOpsChanged = canViewStoreOps.value !== originalCanViewStoreOps.value
   
-  return ownersChanged || dashboardChanged || mappingsChanged
+  return ownersChanged || dashboardChanged || mappingsChanged || storeOpsChanged
 })
 
 // 加载用户列表
@@ -165,8 +171,10 @@ const loadUserPermissions = async (userId: number) => {
     const extendedPermissions = await getUserExtendedPermissions(userId)
     canViewDashboard.value = extendedPermissions.can_view_dashboard
     canEditMappings.value = extendedPermissions.can_edit_mappings
+    canViewStoreOps.value = extendedPermissions.can_view_store_ops ?? false
     originalCanViewDashboard.value = extendedPermissions.can_view_dashboard
     originalCanEditMappings.value = extendedPermissions.can_edit_mappings
+    originalCanViewStoreOps.value = extendedPermissions.can_view_store_ops ?? false
   } catch (err: any) {
     ElMessage.error(err.message || '加载用户权限失败')
   }
@@ -178,6 +186,7 @@ const handleUserSelect = async (user: PermissionUser | null) => {
     selectedUser.value = null
     selectedOwners.value = []
     originalOwners.value = []
+    canViewStoreOps.value = false
     return
   }
   
@@ -189,8 +198,10 @@ const handleUserSelect = async (user: PermissionUser | null) => {
     originalOwners.value = []
     canViewDashboard.value = true
     canEditMappings.value = true
+    canViewStoreOps.value = true
     originalCanViewDashboard.value = true
     originalCanEditMappings.value = true
+    originalCanViewStoreOps.value = true
   } else {
     // 加载该用户的权限
     await loadUserPermissions(user.id)
@@ -226,13 +237,15 @@ const handleSave = async () => {
     await updateUserPermissions(selectedUser.value.id, {
       owners: selectedOwners.value,
       can_view_dashboard: canViewDashboard.value,
-      can_edit_mappings: canEditMappings.value
+      can_edit_mappings: canEditMappings.value,
+      can_view_store_ops: canViewStoreOps.value
     })
     
     // 更新原始权限列表
     originalOwners.value = [...selectedOwners.value]
     originalCanViewDashboard.value = canViewDashboard.value
     originalCanEditMappings.value = canEditMappings.value
+    originalCanViewStoreOps.value = canViewStoreOps.value
     
     ElMessage.success('权限更新成功')
   } catch (err: any) {
@@ -251,6 +264,7 @@ const handleReset = () => {
   selectedOwners.value = [...originalOwners.value]
   canViewDashboard.value = originalCanViewDashboard.value
   canEditMappings.value = originalCanEditMappings.value
+  canViewStoreOps.value = originalCanViewStoreOps.value
   ElMessage.info('已重置为原始权限')
 }
 

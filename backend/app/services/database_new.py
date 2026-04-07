@@ -6,6 +6,7 @@ import pymysql
 import logging
 import sys
 import os
+import json
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta, date
 from collections import defaultdict
@@ -1972,7 +1973,8 @@ class Database:
                     sql = """
                         SELECT id, username, role, 
                                COALESCE(can_view_dashboard, FALSE) as can_view_dashboard,
-                               COALESCE(can_edit_mappings, FALSE) as can_edit_mappings
+                               COALESCE(can_edit_mappings, FALSE) as can_edit_mappings,
+                               COALESCE(can_view_store_ops, FALSE) as can_view_store_ops
                         FROM users
                         ORDER BY id
                     """
@@ -1998,7 +2000,8 @@ class Database:
                     sql = """
                         SELECT 
                             COALESCE(can_view_dashboard, FALSE) as can_view_dashboard,
-                            COALESCE(can_edit_mappings, FALSE) as can_edit_mappings
+                            COALESCE(can_edit_mappings, FALSE) as can_edit_mappings,
+                            COALESCE(can_view_store_ops, FALSE) as can_view_store_ops
                         FROM users
                         WHERE id = %s
                     """
@@ -2007,18 +2010,28 @@ class Database:
                     if result:
                         return {
                             "can_view_dashboard": bool(result.get("can_view_dashboard", False)),
-                            "can_edit_mappings": bool(result.get("can_edit_mappings", False))
+                            "can_edit_mappings": bool(result.get("can_edit_mappings", False)),
+                            "can_view_store_ops": bool(result.get("can_view_store_ops", False)),
                         }
-                    return {"can_view_dashboard": False, "can_edit_mappings": False}
+                    return {
+                        "can_view_dashboard": False,
+                        "can_edit_mappings": False,
+                        "can_view_store_ops": False,
+                    }
         except Exception as e:
             logger.error(f"获取用户扩展权限失败 (user_id={user_id}): {e}")
-            return {"can_view_dashboard": False, "can_edit_mappings": False}
+            return {
+                "can_view_dashboard": False,
+                "can_edit_mappings": False,
+                "can_view_store_ops": False,
+            }
     
     def update_user_extended_permissions(
-        self, 
-        user_id: int, 
-        can_view_dashboard: bool, 
-        can_edit_mappings: bool
+        self,
+        user_id: int,
+        can_view_dashboard: bool,
+        can_edit_mappings: bool,
+        can_view_store_ops: bool = False,
     ) -> bool:
         """
         更新用户的扩展权限
@@ -2027,6 +2040,7 @@ class Database:
             user_id: 用户ID
             can_view_dashboard: 是否可以查看看板总数据
             can_edit_mappings: 是否可以编辑映射
+            can_view_store_ops: 是否可查看店铺运营/员工归因报表
         
         Returns:
             是否成功
@@ -2038,13 +2052,296 @@ class Database:
                         UPDATE users
                         SET can_view_dashboard = %s,
                             can_edit_mappings = %s,
+                            can_view_store_ops = %s,
                             updated_at = CURRENT_TIMESTAMP
                         WHERE id = %s
                     """
-                    cursor.execute(sql, (can_view_dashboard, can_edit_mappings, user_id))
+                    cursor.execute(
+                        sql,
+                        (can_view_dashboard, can_edit_mappings, can_view_store_ops, user_id),
+                    )
                     conn.commit()
-                    logger.info(f"更新用户扩展权限成功 (user_id={user_id}, can_view_dashboard={can_view_dashboard}, can_edit_mappings={can_edit_mappings})")
+                    logger.info(
+                        f"更新用户扩展权限成功 (user_id={user_id}, "
+                        f"can_view_dashboard={can_view_dashboard}, can_edit_mappings={can_edit_mappings}, "
+                        f"can_view_store_ops={can_view_store_ops})"
+                    )
                     return True
         except Exception as e:
             logger.error(f"更新用户扩展权限失败 (user_id={user_id}): {e}")
             return False
+
+    def upsert_store_ops_order_attribution(self, row: Dict[str, Any]) -> bool:
+        """
+        写入或更新一条店铺运营订单归因明细（按 shop_domain + order_id 幂等）。
+        """
+        required = (
+            "shop_domain",
+            "order_id",
+            "biz_date",
+            "total_price",
+            "attribution_type",
+        )
+        for k in required:
+            if k not in row:
+                logger.error(f"upsert_store_ops_order_attribution 缺少字段: {k}")
+                return False
+        raw_json = row.get("raw_json")
+        if raw_json is not None and not isinstance(raw_json, str):
+            raw_json = json.dumps(raw_json, ensure_ascii=False)
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    sql = """
+                        INSERT INTO store_ops_order_attributions (
+                            shop_domain, order_id, placed_at_raw, biz_date,
+                            total_price, currency, financial_status,
+                            attribution_type, employee_slug, utm_decision,
+                            source_url, last_landing_url, raw_json, sync_run_id
+                        ) VALUES (
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        )
+                        ON DUPLICATE KEY UPDATE
+                            placed_at_raw = VALUES(placed_at_raw),
+                            biz_date = VALUES(biz_date),
+                            total_price = VALUES(total_price),
+                            currency = VALUES(currency),
+                            financial_status = VALUES(financial_status),
+                            attribution_type = VALUES(attribution_type),
+                            employee_slug = VALUES(employee_slug),
+                            utm_decision = VALUES(utm_decision),
+                            source_url = VALUES(source_url),
+                            last_landing_url = VALUES(last_landing_url),
+                            raw_json = VALUES(raw_json),
+                            sync_run_id = VALUES(sync_run_id),
+                            updated_at = CURRENT_TIMESTAMP
+                    """
+                    cursor.execute(
+                        sql,
+                        (
+                            row["shop_domain"],
+                            row["order_id"],
+                            row.get("placed_at_raw"),
+                            row["biz_date"],
+                            row["total_price"],
+                            row.get("currency") or "USD",
+                            row.get("financial_status"),
+                            row["attribution_type"],
+                            row.get("employee_slug"),
+                            row.get("utm_decision"),
+                            row.get("source_url"),
+                            row.get("last_landing_url"),
+                            raw_json,
+                            row.get("sync_run_id"),
+                        ),
+                    )
+                    conn.commit()
+                    return True
+        except Exception as e:
+            logger.error(f"upsert_store_ops_order_attribution 失败: {e}", exc_info=True)
+            return False
+
+    def fetch_store_ops_daily_buckets(
+        self,
+        shop_domains: List[str],
+        date_start: date,
+        date_end: date,
+    ) -> List[Dict[str, Any]]:
+        """
+        按店、按业务日、按归因类型与员工 slug 聚合的金额与订单数（用于阶段二报表）。
+        """
+        if not shop_domains:
+            return []
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    placeholders = ",".join(["%s"] * len(shop_domains))
+                    sql = f"""
+                        SELECT
+                            shop_domain,
+                            biz_date,
+                            attribution_type,
+                            COALESCE(NULLIF(employee_slug, ''), '') AS employee_slug,
+                            SUM(total_price) AS sum_price,
+                            COUNT(*) AS order_count
+                        FROM store_ops_order_attributions
+                        WHERE shop_domain IN ({placeholders})
+                          AND biz_date >= %s AND biz_date <= %s
+                        GROUP BY shop_domain, biz_date, attribution_type, employee_slug
+                        ORDER BY shop_domain, biz_date, attribution_type, employee_slug
+                    """
+                    cursor.execute(
+                        sql, tuple(shop_domains) + (date_start, date_end)
+                    )
+                    return list(cursor.fetchall())
+        except Exception as e:
+            logger.error(f"fetch_store_ops_daily_buckets 失败: {e}", exc_info=True)
+            return []
+
+    def insert_store_ops_sync_run_running(
+        self,
+        sync_run_id: str,
+        shops: List[str],
+        biz_dates: List[str],
+    ) -> bool:
+        """同步开始时写入 running。"""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    sql = """
+                        INSERT INTO store_ops_sync_runs (
+                            sync_run_id, status, shops_json, biz_dates_json,
+                            orders_seen, orders_upserted_paid, orders_skipped_not_paid,
+                            error_count
+                        ) VALUES (
+                            %s, 'running', %s, %s, 0, 0, 0, 0
+                        )
+                    """
+                    cursor.execute(
+                        sql,
+                        (
+                            sync_run_id,
+                            json.dumps(shops, ensure_ascii=False),
+                            json.dumps(biz_dates, ensure_ascii=False),
+                        ),
+                    )
+                    conn.commit()
+                    return True
+        except Exception as e:
+            logger.error(f"insert_store_ops_sync_run_running 失败: {e}", exc_info=True)
+            return False
+
+    def finalize_store_ops_sync_run_from_stats(self, sync_run_id: str, stats: Dict[str, Any]) -> bool:
+        """
+        同步正常返回后落库：success（无错）或 partial（有错但任务跑完）。
+        """
+        errors = stats.get("errors") or []
+        err_n = len(errors)
+        status = "success" if err_n == 0 else "partial"
+        per_shop = stats.get("per_shop") or []
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    sql = """
+                        UPDATE store_ops_sync_runs SET
+                            status = %s,
+                            orders_seen = %s,
+                            orders_upserted_paid = %s,
+                            orders_skipped_not_paid = %s,
+                            error_count = %s,
+                            errors_json = %s,
+                            per_shop_json = %s,
+                            finished_at = CURRENT_TIMESTAMP
+                        WHERE sync_run_id = %s
+                    """
+                    cursor.execute(
+                        sql,
+                        (
+                            status,
+                            int(stats.get("orders_seen") or 0),
+                            int(stats.get("orders_upserted_paid") or 0),
+                            int(stats.get("orders_skipped_not_paid") or 0),
+                            err_n,
+                            json.dumps(errors, ensure_ascii=False),
+                            json.dumps(per_shop, ensure_ascii=False),
+                            sync_run_id,
+                        ),
+                    )
+                    conn.commit()
+                    return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"finalize_store_ops_sync_run_from_stats 失败: {e}", exc_info=True)
+            return False
+
+    def finalize_store_ops_sync_run_failed(
+        self, sync_run_id: str, exception_message: str
+    ) -> bool:
+        """后台任务抛异常时标记 failed。"""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    sql = """
+                        UPDATE store_ops_sync_runs SET
+                            status = 'failed',
+                            exception_message = %s,
+                            finished_at = CURRENT_TIMESTAMP
+                        WHERE sync_run_id = %s
+                    """
+                    cursor.execute(sql, (exception_message[:65000], sync_run_id))
+                    conn.commit()
+                    return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"finalize_store_ops_sync_run_failed 失败: {e}", exc_info=True)
+            return False
+
+    def get_store_ops_sync_run(self, sync_run_id: str) -> Optional[Dict[str, Any]]:
+        """按 UUID 查询一条同步批次。"""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT
+                            sync_run_id, status, shops_json, biz_dates_json,
+                            orders_seen, orders_upserted_paid, orders_skipped_not_paid,
+                            error_count, errors_json, per_shop_json, exception_message,
+                            started_at, finished_at
+                        FROM store_ops_sync_runs
+                        WHERE sync_run_id = %s
+                        """,
+                        (sync_run_id,),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        return None
+                    return self._normalize_store_ops_sync_run_row(row)
+        except Exception as e:
+            logger.error(f"get_store_ops_sync_run 失败: {e}", exc_info=True)
+            return None
+
+    def list_store_ops_sync_runs(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """最近若干条同步批次（含 running 与已结束）。"""
+        lim = max(1, min(int(limit), 100))
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT
+                            sync_run_id, status, shops_json, biz_dates_json,
+                            orders_seen, orders_upserted_paid, orders_skipped_not_paid,
+                            error_count, errors_json, per_shop_json, exception_message,
+                            started_at, finished_at
+                        FROM store_ops_sync_runs
+                        ORDER BY started_at DESC
+                        LIMIT %s
+                        """,
+                        (lim,),
+                    )
+                    rows = cursor.fetchall()
+                    return [self._normalize_store_ops_sync_run_row(r) for r in rows]
+        except Exception as e:
+            logger.error(f"list_store_ops_sync_runs 失败: {e}", exc_info=True)
+            return []
+
+    def _normalize_store_ops_sync_run_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        """JSON 列与 datetime 转为前端友好格式。"""
+        out = dict(row)
+        for k in ("shops_json", "biz_dates_json", "errors_json", "per_shop_json"):
+            v = out.get(k)
+            if v is None:
+                continue
+            if isinstance(v, (dict, list)):
+                continue
+            if isinstance(v, bytes):
+                v = v.decode("utf-8", errors="replace")
+            if isinstance(v, str):
+                try:
+                    out[k] = json.loads(v)
+                except json.JSONDecodeError:
+                    out[k] = v
+        for k in ("started_at", "finished_at"):
+            t = out.get(k)
+            if hasattr(t, "isoformat"):
+                out[k] = t.isoformat(sep=" ", timespec="seconds")
+        return out

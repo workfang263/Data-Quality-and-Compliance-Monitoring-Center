@@ -241,10 +241,58 @@ CREATE TABLE `users` (
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `can_view_dashboard` tinyint(1) DEFAULT '0' COMMENT '是否可以查看看板总数据（默认FALSE，普通用户不能查看）',
   `can_edit_mappings` tinyint(1) DEFAULT '0' COMMENT '是否可以编辑映射（默认FALSE，普通用户不能编辑）',
+  `can_view_store_ops` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否可查看店铺运营/员工归因报表（与 can_view_dashboard 独立）',
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`),
   KEY `idx_username` (`username`)
 ) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户表（登录系统）';
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `store_ops_order_attributions` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `shop_domain` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '店匠店铺域名',
+  `order_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '店匠订单 ID',
+  `placed_at_raw` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'API 原始 placed_at',
+  `biz_date` date NOT NULL COMMENT '业务日：placed_at 转 Asia/Shanghai 的日期',
+  `total_price` decimal(18,4) NOT NULL COMMENT '订单 total_price（仅同步 paid）',
+  `currency` varchar(16) COLLATE utf8mb4_unicode_ci DEFAULT 'USD',
+  `financial_status` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `attribution_type` enum('employee','public_pool') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `employee_slug` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '命中白名单的小写 slug',
+  `utm_decision` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'last|first|public 等',
+  `source_url` text COLLATE utf8mb4_unicode_ci COMMENT '首次落地/来源 URL',
+  `last_landing_url` text COLLATE utf8mb4_unicode_ci COMMENT '末次落地 URL',
+  `raw_json` longtext COLLATE utf8mb4_unicode_ci COMMENT '订单详情 JSON（可选）',
+  `sync_run_id` char(36) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '同步批次 UUID',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_shop_order` (`shop_domain`,`order_id`),
+  KEY `idx_shop_biz_date` (`shop_domain`,`biz_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='店铺运营-员工归因订单明细（仅 financial_status=paid）';
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `store_ops_sync_runs` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `sync_run_id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '与接口返回的批次 UUID 一致',
+  `status` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'running|success|partial|failed',
+  `shops_json` json DEFAULT NULL COMMENT '本次店铺域名列表',
+  `biz_dates_json` json DEFAULT NULL COMMENT '业务日 YYYY-MM-DD 列表',
+  `orders_seen` int NOT NULL DEFAULT '0',
+  `orders_upserted_paid` int NOT NULL DEFAULT '0',
+  `orders_skipped_not_paid` int NOT NULL DEFAULT '0',
+  `error_count` int NOT NULL DEFAULT '0',
+  `errors_json` json DEFAULT NULL COMMENT '全部错误明细 JSON 数组',
+  `per_shop_json` json DEFAULT NULL COMMENT '按店汇总与分店铺错误',
+  `exception_message` text COLLATE utf8mb4_unicode_ci COMMENT '任务级未捕获异常',
+  `started_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `finished_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_sync_run_id` (`sync_run_id`),
+  KEY `idx_started_at` (`started_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='店铺运营-同步批次结果';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
