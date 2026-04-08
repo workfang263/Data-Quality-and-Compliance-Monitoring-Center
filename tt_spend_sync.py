@@ -16,7 +16,12 @@
   2) 数据库表已创建：
      - tt_ad_account_spend_hourly
      - tt_ad_account_owner_mapping
+     - tt_ad_account_timezone_mapping（可选；无则按负责人/默认上海，见 timezone_utils）
   3) 已导入广告账户 -> 负责人映射
+
+时区说明：
+  - API 返回的 stat_time_hour 按「广告主报表时区」解析为本地 naive 小时，
+    再经 timezone_utils 转为北京时间后写入 time_hour，与 Facebook 花费用法一致。
 """
 import argparse
 import datetime
@@ -29,6 +34,7 @@ from typing import List, Dict, Optional, Tuple
 from aggregate_owner_daily import aggregate_date
 
 from config import DB_CONFIG, TT_CONFIG
+from timezone_utils import get_timezone_config, convert_to_beijing_time
 
 # 重试配置
 MAX_RETRY = 3
@@ -253,8 +259,13 @@ def main():
                     else:
                         print(f"[DEBUG] {advertiser_id} {date_str} 返回 {len(data)} 条数据")
                     
-                    # 使用字典去重，避免重复数据累加
-                    seen = {}  # key: (time_hour, ad_account_id)
+                    # 使用字典去重，避免重复数据累加（入库时间为北京时间 naive，与 fb_spend_sync 一致）
+                    seen = {}  # key: (time_hour_beijing, ad_account_id)
+                    # 账户时区：账户表 tt_ad_account_timezone_mapping → 负责人 → 默认上海（与 timezone_utils 一致）
+                    tz_cfg = get_timezone_config(
+                        conn, advertiser_id, owner, platform="tiktok"
+                    )
+                    tz_off = float(tz_cfg["timezone_offset"])
                     
                     for r in data:
                         spend = float(r.get("metrics", {}).get("spend", 0) or 0)
@@ -266,29 +277,32 @@ def main():
                         
                         if time_str:
                             # 解析时间字符串，例如 "2025-12-08 00:00:00"
+                            # 语义：广告主报表时区下的「墙钟时间」，作 naive datetime 参与 offset 换算
                             try:
-                                time_hour = datetime.datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-                            except:
-                                # 如果解析失败，尝试只解析日期
+                                dt_local = datetime.datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+                            except Exception:
                                 try:
-                                    time_hour = datetime.datetime.strptime(time_str.split()[0], "%Y-%m-%d")
-                                except:
+                                    dt_local = datetime.datetime.strptime(time_str.split()[0], "%Y-%m-%d")
+                                except Exception:
                                     print(f"[WARN] {advertiser_id} {date_str} 无法解析时间: {time_str}")
                                     continue
                             
-                            # 关键修复：只保留请求日期当天的数据，过滤掉跨天数据
-                            if time_hour.date() != d:
-                                # 跳过不属于请求日期的数据（可能是跨天数据）
+                            # 只保留「广告主本地历日」= 请求日 d 的小时，避免 API 偶发跨日脏行
+                            if dt_local.date() != d:
                                 continue
                             
+                            # 本地小时 → 北京时间小时（入库 time_hour 与概览/FB 对齐）
+                            time_hour_bj = convert_to_beijing_time(dt_local, tz_off)
+                            
                             # 去重：如果同一小时已存在，使用最新的数据（覆盖）
-                            key = (time_hour, advertiser_id)
+                            key = (time_hour_bj, advertiser_id)
                             if key not in seen:
-                                seen[key] = (time_hour, advertiser_id, owner, spend, currency)
+                                seen[key] = (time_hour_bj, advertiser_id, owner, spend, currency)
                             else:
-                                # 如果已存在，更新为最新的（覆盖旧数据）
-                                print(f"[DEBUG] {advertiser_id} {date_str} 发现重复的小时 {time_hour}，使用最新数据 spend={spend}")
-                                seen[key] = (time_hour, advertiser_id, owner, spend, currency)
+                                print(
+                                    f"[DEBUG] {advertiser_id} {date_str} 发现重复的小时 {time_hour_bj}，使用最新数据 spend={spend}"
+                                )
+                                seen[key] = (time_hour_bj, advertiser_id, owner, spend, currency)
                         else:
                             print(f"[WARN] {advertiser_id} {date_str} 数据缺少时间字段，跳过")
                     

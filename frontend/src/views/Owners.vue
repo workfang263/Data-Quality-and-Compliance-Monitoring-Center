@@ -1,35 +1,50 @@
 <template>
-  <div class="owners-page">
-    <!-- 页面标题 -->
-    <h2>负责人汇总</h2>
-    
-    <!-- 筛选条件 -->
-    <el-card shadow="never" style="margin-bottom: 20px">
-      <el-form :inline="true" :model="filters">
-        <el-form-item label="日期范围">
-          <el-date-picker
-            v-model="filters.dateRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            format="YYYY-MM-DD"
-            value-format="YYYY-MM-DD"
-            @change="handleDateRangeChange"
-          />
-        </el-form-item>
-        
-        <el-form-item label="快捷选择">
-          <el-button-group>
-            <el-button @click="setQuickDate('today')">今天</el-button>
-            <el-button @click="setQuickDate('yesterday')">昨天</el-button>
-            <el-button @click="setQuickDate('last7days')">最近7天</el-button>
-            <el-button @click="setQuickDate('last30days')">最近30天</el-button>
-          </el-button-group>
-        </el-form-item>
-        
-        <el-form-item label="排序">
-          <el-select v-model="filters.sortBy" @change="handleFiltersChange" style="width: 150px">
+  <!-- 外壳与页头：与其它后台页一致的背景与标题行 -->
+  <PageShell>
+    <PageHeaderBar title="负责人汇总">
+      <template #actions>
+        <!-- 显式触发拉取：与筛选变更共用 fetchData，避免重复请求逻辑 -->
+        <el-button type="primary" :icon="Refresh" :loading="loading" @click="fetchData">
+          刷新数据
+        </el-button>
+      </template>
+    </PageHeaderBar>
+
+    <!-- 单卡片：工具条 + 表格集中在一处，层次更接近设计稿 -->
+    <el-card class="rounded-xl border border-gray-100 shadow-sm" shadow="never">
+      <!-- 工具条：大屏左右分布，小屏纵向堆叠 -->
+      <div
+        class="mb-6 flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between"
+      >
+        <div class="flex flex-col gap-3">
+          <div class="text-sm text-gray-500">日期范围</div>
+          <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <el-date-picker
+              v-model="filters.dateRange"
+              type="daterange"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              format="YYYY-MM-DD"
+              value-format="YYYY-MM-DD"
+              class="owners-date-picker"
+              @change="handleDateRangeChange"
+            />
+            <el-button-group class="shrink-0">
+              <el-button @click="setQuickDate('today')">今天</el-button>
+              <el-button @click="setQuickDate('yesterday')">昨天</el-button>
+              <el-button @click="setQuickDate('last7days')">最近7天</el-button>
+              <el-button @click="setQuickDate('last30days')">最近30天</el-button>
+            </el-button-group>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="mr-1 text-sm text-gray-500">排序</span>
+          <el-select
+            v-model="filters.sortBy"
+            class="w-[150px]"
+            @change="handleFiltersChange"
+          >
             <el-option label="负责人名称" value="owner" />
             <el-option label="销售额" value="gmv" />
             <el-option label="订单数" value="orders" />
@@ -38,27 +53,32 @@
             <el-option label="广告花费" value="spend" />
             <el-option label="ROAS" value="roas" />
           </el-select>
-          
-          <el-select v-model="filters.sortOrder" @change="handleFiltersChange" style="width: 120px; margin-left: 10px">
+          <el-select
+            v-model="filters.sortOrder"
+            class="w-[120px]"
+            @change="handleFiltersChange"
+          >
             <el-option label="升序" value="asc" />
             <el-option label="降序" value="desc" />
           </el-select>
-        </el-form-item>
-      </el-form>
-    </el-card>
-    
-    <!-- 加载状态 -->
-    <el-skeleton v-if="loading" :rows="10" animated />
-    
-    <!-- 错误提示 -->
-    <el-alert v-if="error" type="error" :closable="false" show-icon style="margin-bottom: 20px">
-      {{ error }}
-    </el-alert>
-    
-    <!-- 数据表格 -->
-    <el-card v-if="!loading && !error" shadow="never">
-      <el-table :data="data" border style="width: 100%" v-loading="loading">
-        <el-table-column prop="owner" label="负责人" width="150">
+        </div>
+      </div>
+
+      <el-skeleton v-if="loading" :rows="10" animated />
+
+      <el-alert
+        v-else-if="error"
+        type="error"
+        :closable="false"
+        show-icon
+        class="mb-0"
+      >
+        {{ error }}
+      </el-alert>
+
+      <el-table v-else :data="data" stripe class="owners-table w-full" style="width: 100%">
+        <!-- fixed：横向滚动时负责人列固定，关键信息不丢 -->
+        <el-table-column prop="owner" label="负责人" width="150" fixed="left">
           <template #default="{ row }">
             <el-button type="primary" link @click="showOwnerChart(row.owner)">
               {{ row.owner }}
@@ -92,19 +112,32 @@
             ${{ row.total_spend_all.toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column prop="roas" label="ROAS" width="100" sortable>
+        <el-table-column prop="roas" label="ROAS" width="112" sortable>
+          <!-- 插槽：按阈值展示不同 tag，比纯数字更易扫读 -->
           <template #default="{ row }">
-            {{ row.roas !== null ? row.roas.toFixed(2) : 'N/A' }}
+            <el-tag v-if="row.roas === null" type="info" size="small" effect="plain">
+              N/A
+            </el-tag>
+            <el-tag
+              v-else
+              :type="row.roas >= ROAS_GOOD_THRESHOLD ? 'success' : 'warning'"
+              size="small"
+              effect="plain"
+            >
+              {{ row.roas.toFixed(2) }}
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="conversion_rate" label="转化率" width="100" sortable>
+        <el-table-column prop="conversion_rate" label="转化率" width="110" sortable>
           <template #default="{ row }">
-            {{ row.conversion_rate.toFixed(2) }}%
+            <span class="text-sm tabular-nums text-gray-800">
+              {{ row.conversion_rate.toFixed(2) }}%
+            </span>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
-    
+
     <!-- 负责人折线图弹窗 -->
     <el-dialog
       v-model="chartDialogVisible"
@@ -126,15 +159,20 @@
       />
       <el-empty v-else description="暂无数据" />
     </el-dialog>
-  </div>
+  </PageShell>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Loading } from '@element-plus/icons-vue'
+import { Loading, Refresh } from '@element-plus/icons-vue'
 import { getOwnersSummary, getOwnerHourly, type OwnerSummaryItem, type OwnerHourlyItem } from '../api/owners'
 import OwnerChart from '../components/OwnerChart.vue'
+import PageShell from '../components/PageShell.vue'
+import PageHeaderBar from '../components/PageHeaderBar.vue'
+
+/** ROAS 高于该阈值用 success 标签，便于一眼区分表现（可按业务再调） */
+const ROAS_GOOD_THRESHOLD = 3
 
 // 筛选条件
 const filters = ref({
@@ -186,10 +224,9 @@ const setQuickDate = (type: string) => {
       return
   }
   
-  filters.value.dateRange = [
-    start.toISOString().split('T')[0],
-    end.toISOString().split('T')[0]
-  ]
+  const startStr = start.toISOString().split('T')[0] ?? ''
+  const endStr = end.toISOString().split('T')[0] ?? ''
+  filters.value.dateRange = [startStr, endStr]
   
   handleFiltersChange()
 }
@@ -220,9 +257,11 @@ const fetchData = async () => {
   error.value = ''
   
   try {
+    const startDate = filters.value.dateRange[0] ?? ''
+    const endDate = filters.value.dateRange[1] ?? ''
     const result = await getOwnersSummary({
-      start_date: filters.value.dateRange[0],
-      end_date: filters.value.dateRange[1],
+      start_date: startDate,
+      end_date: endDate,
       sort_by: filters.value.sortBy,
       sort_order: filters.value.sortOrder
     })
@@ -251,20 +290,22 @@ const showOwnerChart = async (owner: string) => {
   
   try {
     // 限制查询范围最多7天
-    const start = new Date(filters.value.dateRange[0])
-    const end = new Date(filters.value.dateRange[1])
+    const range0 = filters.value.dateRange[0] ?? ''
+    const range1 = filters.value.dateRange[1] ?? ''
+    const start = new Date(range0)
+    const end = new Date(range1)
     const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
     
-    let queryStart = filters.value.dateRange[0]
-    let queryEnd = filters.value.dateRange[1]
+    let queryStart = range0
+    let queryEnd = range1
     
     if (daysDiff > 7) {
       // 如果超过7天，只查询最近7天
       const recentEnd = new Date(end)
       const recentStart = new Date(recentEnd)
       recentStart.setDate(recentStart.getDate() - 6)
-      queryStart = recentStart.toISOString().split('T')[0]
-      queryEnd = recentEnd.toISOString().split('T')[0]
+      queryStart = recentStart.toISOString().split('T')[0] ?? queryStart
+      queryEnd = recentEnd.toISOString().split('T')[0] ?? queryEnd
       ElMessage.info('查询范围超过7天，已自动调整为最近7天')
     }
     
@@ -290,15 +331,17 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.owners-page {
-  padding: 20px;
-  max-width: 1400px;
-  margin: 0 auto;
+.owners-date-picker {
+  width: 100%;
+  max-width: 280px;
 }
-
-.owners-page h2 {
-  margin-bottom: 20px;
-  font-size: 24px;
+@media (min-width: 640px) {
+  .owners-date-picker {
+    width: 260px;
+  }
+}
+.owners-table :deep(.el-table__header th) {
   font-weight: 600;
+  color: var(--el-text-color-secondary);
 }
 </style>

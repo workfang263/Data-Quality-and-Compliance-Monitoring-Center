@@ -65,6 +65,13 @@ export function getTikTokMappings(): Promise<AdAccountMapping[]> {
   return request.get<AdAccountMapping[]>('/mappings/tiktok')
 }
 
+/** GET 负责人联想（三表去重，需映射编辑权限） */
+export function getOwnerSuggestions(q?: string, limit?: number): Promise<string[]> {
+  return request.get<string[]>('/mappings/owners/suggestions', {
+    params: { q: q ?? '', limit: limit ?? 40 }
+  })
+}
+
 /**
  * 更新店铺映射
  */
@@ -86,5 +93,49 @@ export function updateTikTokMapping(id: number, owner: string): Promise<UpdateMa
   return request.put<UpdateMappingResponse>(`/mappings/tiktok/${id}`, { owner })
 }
 
+/** POST 创建/更新店铺映射 */
+export interface CreateStoreMappingResponse {
+  shop_domain: string
+  owner: string
+  is_active: boolean
+}
 
+export function createStoreMapping(payload: {
+  shop_domain: string
+  owner: string
+  access_token: string
+  is_active: boolean
+}): Promise<CreateStoreMappingResponse> {
+  return request.post<CreateStoreMappingResponse>('/mappings/stores', payload)
+}
+
+/** 时区拉取结果（FB/TT 新增接口返回） */
+export interface TimezoneSyncPayload {
+  ok: boolean
+  platform?: string
+  ad_account_id?: string
+  message?: string
+  timezone?: string
+  timezone_offset?: number
+}
+
+export interface CreateAdMappingResponse {
+  ad_account_id: string
+  owner: string
+  timezone_sync: TimezoneSyncPayload
+}
+
+export function createFacebookMapping(payload: {
+  ad_account_id: string
+  owner: string
+}): Promise<CreateAdMappingResponse> {
+  return request.post<CreateAdMappingResponse>('/mappings/facebook', payload)
+}
+
+export function createTikTokMapping(payload: {
+  ad_account_id: string
+  owner: string
+}): Promise<CreateAdMappingResponse> {
+  return request.post<CreateAdMappingResponse>('/mappings/tiktok', payload)
+}
 

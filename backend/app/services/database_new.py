@@ -995,6 +995,124 @@ class Database:
             # 记录日志失败时不抛出异常，避免影响主流程
             logger.error(f"记录日志到数据库失败: {e}")
             return False
+
+    def log_mapping_audit(
+        self,
+        action: str,
+        resource_type: str,
+        resource_id: str,
+        owner: Optional[str] = None,
+        operator_user_id: Optional[int] = None,
+        operator_username: Optional[str] = None,
+        request_payload: Optional[Dict[str, Any]] = None,
+        result_status: str = "success",
+        result_message: Optional[str] = None,
+    ) -> bool:
+        """
+        记录映射资源的结构化审计日志。
+
+        设计原则：
+        - 审计失败不影响主流程（返回 False，不抛异常）
+        - payload 由调用方先脱敏后传入（例如 access_token 不得明文入库）
+        """
+        try:
+            payload_text = json.dumps(request_payload, ensure_ascii=False) if request_payload is not None else None
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    sql = """
+                        INSERT INTO mapping_resource_audit
+                        (action, resource_type, resource_id, owner, operator_user_id, operator_username,
+                         request_payload, result_status, result_message)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                    cursor.execute(
+                        sql,
+                        (
+                            action,
+                            resource_type,
+                            resource_id,
+                            owner,
+                            operator_user_id,
+                            operator_username,
+                            payload_text,
+                            result_status,
+                            result_message,
+                        ),
+                    )
+                    conn.commit()
+                    return True
+        except Exception as e:
+            logger.error(f"记录映射审计日志失败: {e}")
+            return False
+
+    def count_mapping_resource_audits(
+        self,
+        resource_type: Optional[str] = None,
+        action: Optional[str] = None,
+        result_status: Optional[str] = None,
+    ) -> int:
+        """符合条件的映射审计总行数（用于分页）。"""
+        where_clause, params = self._mapping_audit_where(resource_type, action, result_status)
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    sql = f"SELECT COUNT(*) AS cnt FROM mapping_resource_audit WHERE {where_clause}"
+                    cursor.execute(sql, params)
+                    row = cursor.fetchone()
+                    return int(row["cnt"]) if row else 0
+        except Exception as e:
+            logger.error(f"统计映射审计失败: {e}")
+            return 0
+
+    def get_mapping_resource_audits(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        resource_type: Optional[str] = None,
+        action: Optional[str] = None,
+        result_status: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """分页查询映射审计记录，按 id 降序（最新在前）。"""
+        where_clause, params = self._mapping_audit_where(resource_type, action, result_status)
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    sql = f"""
+                        SELECT id, action, resource_type, resource_id, owner,
+                               operator_user_id, operator_username, request_payload,
+                               result_status, result_message, created_at
+                        FROM mapping_resource_audit
+                        WHERE {where_clause}
+                        ORDER BY id DESC
+                        LIMIT %s OFFSET %s
+                    """
+                    cursor.execute(sql, tuple(list(params) + [limit, offset]))
+                    return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"查询映射审计失败: {e}")
+            return []
+
+    @staticmethod
+    def _mapping_audit_where(
+        resource_type: Optional[str],
+        action: Optional[str],
+        result_status: Optional[str],
+    ) -> Tuple[str, List[Any]]:
+        """构造 WHERE 子句与参数（调用方已对白名单值做过校验）。"""
+        parts: List[str] = []
+        params: List[Any] = []
+        if resource_type:
+            parts.append("resource_type = %s")
+            params.append(resource_type)
+        if action:
+            parts.append("action = %s")
+            params.append(action)
+        if result_status:
+            parts.append("result_status = %s")
+            params.append(result_status)
+        if not parts:
+            return "1=1", params
+        return " AND ".join(parts), params
     
     def cleanup_old_logs(self, file_log_days: int = 30, db_log_days: int = 90) -> Dict[str, int]:
         """
@@ -1620,6 +1738,129 @@ class Database:
         except Exception as e:
             logger.error(f"获取TikTok广告账户映射失败: {e}")
             return []
+
+    def suggest_mapping_owners(self, query: str = "", limit: int = 40) -> List[str]:
+        """
+        店铺 / FB / TT 三表合并去重后的负责人名称，供新增映射联想。
+        query 非空时按子串模糊匹配（与前端原先 String#includes 行为类似）。
+        """
+        lim = max(1, min(int(limit), 100))
+        q = (query or "").strip()
+        sub = """
+            SELECT DISTINCT TRIM(owner) AS owner FROM store_owner_mapping
+            WHERE owner IS NOT NULL AND TRIM(owner) <> ''
+            UNION
+            SELECT DISTINCT TRIM(owner) FROM ad_account_owner_mapping
+            WHERE owner IS NOT NULL AND TRIM(owner) <> ''
+            UNION
+            SELECT DISTINCT TRIM(owner) FROM tt_ad_account_owner_mapping
+            WHERE owner IS NOT NULL AND TRIM(owner) <> ''
+        """
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    if q:
+                        sql = (
+                            f"SELECT owner FROM ({sub}) AS u WHERE owner LIKE %s "
+                            "ORDER BY owner ASC LIMIT %s"
+                        )
+                        cursor.execute(sql, (f"%{q}%", lim))
+                    else:
+                        sql = f"SELECT owner FROM ({sub}) AS u ORDER BY owner ASC LIMIT %s"
+                        cursor.execute(sql, (lim,))
+                    rows = cursor.fetchall()
+                    return [r["owner"] for r in rows if r.get("owner")]
+        except Exception as e:
+            logger.error(f"suggest_mapping_owners 失败: {e}")
+            return []
+
+    def create_or_update_store_mapping(
+        self,
+        shop_domain: str,
+        owner: str,
+        access_token: str,
+        is_active: bool = True,
+    ) -> bool:
+        """
+        创建或更新店铺与负责人映射。
+        同一事务内写入：
+        1) shoplazza_stores（店铺凭证）
+        2) store_owner_mapping（店铺负责人）
+        """
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO shoplazza_stores (shop_domain, access_token, is_active, updated_at)
+                        VALUES (%s, %s, %s, NOW())
+                        ON DUPLICATE KEY UPDATE
+                          access_token = VALUES(access_token),
+                          is_active = VALUES(is_active),
+                          updated_at = NOW()
+                        """,
+                        (shop_domain, access_token, bool(is_active)),
+                    )
+                    cursor.execute(
+                        """
+                        INSERT INTO store_owner_mapping (shop_domain, owner, updated_at)
+                        VALUES (%s, %s, NOW())
+                        ON DUPLICATE KEY UPDATE
+                          owner = VALUES(owner),
+                          updated_at = NOW()
+                        """,
+                        (shop_domain, owner),
+                    )
+                    conn.commit()
+                    logger.info("创建/更新店铺映射成功: %s -> %s", shop_domain, owner)
+                    return True
+        except Exception as e:
+            logger.error("创建/更新店铺映射失败: %s", e)
+            return False
+
+    def create_or_update_facebook_mapping(self, ad_account_id: str, owner: str) -> bool:
+        """创建或更新 Facebook 广告账户映射。"""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO ad_account_owner_mapping (ad_account_id, owner, updated_at)
+                        VALUES (%s, %s, NOW())
+                        ON DUPLICATE KEY UPDATE
+                          owner = VALUES(owner),
+                          updated_at = NOW()
+                        """,
+                        (ad_account_id, owner),
+                    )
+                    conn.commit()
+                    logger.info("创建/更新 Facebook 映射成功: %s -> %s", ad_account_id, owner)
+                    return True
+        except Exception as e:
+            logger.error("创建/更新 Facebook 映射失败: %s", e)
+            return False
+
+    def create_or_update_tiktok_mapping(self, ad_account_id: str, owner: str) -> bool:
+        """创建或更新 TikTok 广告账户映射。"""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO tt_ad_account_owner_mapping (ad_account_id, owner, updated_at)
+                        VALUES (%s, %s, NOW())
+                        ON DUPLICATE KEY UPDATE
+                          owner = VALUES(owner),
+                          updated_at = NOW()
+                        """,
+                        (ad_account_id, owner),
+                    )
+                    conn.commit()
+                    logger.info("创建/更新 TikTok 映射成功: %s -> %s", ad_account_id, owner)
+                    return True
+        except Exception as e:
+            logger.error("创建/更新 TikTok 映射失败: %s", e)
+            return False
     
     def update_store_owner_mapping(self, shop_domain: str, owner: str) -> Optional[List[date]]:
         """

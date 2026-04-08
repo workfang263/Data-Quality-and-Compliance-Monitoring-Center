@@ -17,7 +17,7 @@
 
 说明：
   - 负责人可暂时为空；为空时会写入占位值“未分配”（因为数据库字段 owner NOT NULL）。
-  - ad_account_id 支持输入 "act_4395028554063117" 或 "4395028554063117"；会自动规范化为纯数字。
+  - ad_account_id 支持输入 "act_4395028554063117" 或 "4395028554063117"；会规范化为与库内一致的 **act_纯数字**（与 fb_spend_sync、阶段0迁移一致）。
 """
 
 from __future__ import annotations
@@ -26,33 +26,11 @@ import sys
 from typing import Optional
 
 from database import Database
+from mapping_resource_utils import normalize_fb_ad_account_id
 
 
 # 负责人为空时的占位值（策略 A）
 UNASSIGNED_OWNER = "未分配"
-
-
-def _normalize_ad_account_id(raw: str) -> Optional[str]:
-    """
-    规范化广告账户ID：
-    - 允许输入 act_ 前缀（Facebook 常见格式）
-    - 去掉两端空白
-    - 最终必须是纯数字字符串
-    """
-    # 1) 处理 None/空字符串
-    raw = (raw or "").strip()
-    if not raw:
-        return None
-
-    # 2) 去掉常见前缀 act_
-    if raw.lower().startswith("act_"):
-        raw = raw[4:]
-
-    # 3) 最终要求为数字（数据库字段 ad_account_id 统一用数字更稳定）
-    if not raw.isdigit():
-        return None
-
-    return raw
 
 
 def add_fb_account(ad_account_id: str, owner: Optional[str]) -> bool:
@@ -63,8 +41,8 @@ def add_fb_account(ad_account_id: str, owner: Optional[str]) -> bool:
     - 映射表有 UNIQUE(ad_account_id)，所以用 ON DUPLICATE KEY UPDATE 实现“存在则更新，不存在则插入”。
     - 同时把历史花费表 fb_ad_account_spend_hourly 的 owner 字段更新为最新 owner（保持口径一致）。
     """
-    # 1) 标准化广告账户ID（避免 act_ 前缀或空格导致查询不到）
-    normalized_id = _normalize_ad_account_id(ad_account_id)
+    # 1) 标准化为 act_{纯数字}，与明细表 / 映射表迁移后格式一致
+    normalized_id = normalize_fb_ad_account_id(ad_account_id)
     if not normalized_id:
         print("错误：广告账户编号无效。请输入纯数字ID，例如 4395028554063117（也可输入 act_4395028554063117）。")
         return False

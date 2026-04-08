@@ -92,6 +92,7 @@ from app.api import (
     dashboard_api,
     owners_api,
     mappings_api,
+    audit_api,
     auth_api,
     permissions_api,
     store_ops_api,
@@ -105,6 +106,9 @@ app.include_router(owners_api.router)
 
 # 注册映射编辑API路由
 app.include_router(mappings_api.router)
+
+# 注册映射审计 API
+app.include_router(audit_api.router)
 
 # 注册用户认证API路由
 app.include_router(auth_api.router)
