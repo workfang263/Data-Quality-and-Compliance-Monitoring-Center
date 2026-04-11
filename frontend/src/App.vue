@@ -42,9 +42,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 路由视图容器 */
+/*
+ * 路由根节点：占满顶栏下方剩余高度并在此区域内滚动。
+ * min-height: 0 避免 flex 子项默认 min-height:auto 撑开导致 body 与内部同时滚动（双滚动条）。
+ */
 #app > :last-child {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 </style>

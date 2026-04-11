@@ -13,10 +13,10 @@ defineProps<{
     class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
   >
     <div class="min-w-0">
-      <h1 class="text-2xl font-semibold tracking-tight text-gray-900">
+      <h1 class="text-2xl font-semibold tracking-tight text-slate-900">
         {{ title }}
       </h1>
-      <p v-if="subtitle" class="mt-1 text-sm text-gray-500">
+      <p v-if="subtitle" class="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500">
         {{ subtitle }}
       </p>
     </div>

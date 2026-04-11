@@ -2180,23 +2180,28 @@ class Database:
     
     def get_all_owners(self) -> List[str]:
         """
-        获取所有负责人列表（从store_owner_mapping表获取）
-        
-        Returns:
-            负责人名称列表（去重并排序）
+        获取所有负责人列表：店铺 / Facebook / TikTok 三表合并去重，与映射联想一致。
+        供权限管理页展示可勾选的负责人，避免仅出现在广告侧映射的负责人无法被授权。
+        """
+        sql = """
+            SELECT owner FROM (
+                SELECT DISTINCT TRIM(owner) AS owner FROM store_owner_mapping
+                WHERE owner IS NOT NULL AND TRIM(owner) <> ''
+                UNION
+                SELECT DISTINCT TRIM(owner) FROM ad_account_owner_mapping
+                WHERE owner IS NOT NULL AND TRIM(owner) <> ''
+                UNION
+                SELECT DISTINCT TRIM(owner) FROM tt_ad_account_owner_mapping
+                WHERE owner IS NOT NULL AND TRIM(owner) <> ''
+            ) AS u
+            ORDER BY owner
         """
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
-                    sql = """
-                        SELECT DISTINCT owner
-                        FROM store_owner_mapping
-                        WHERE owner IS NOT NULL AND owner != ''
-                        ORDER BY owner
-                    """
                     cursor.execute(sql)
                     results = cursor.fetchall()
-                    return [row['owner'] for row in results]
+                    return [row["owner"] for row in results if row.get("owner")]
         except Exception as e:
             logger.error(f"获取负责人列表失败: {e}")
             return []

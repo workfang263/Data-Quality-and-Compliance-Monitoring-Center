@@ -76,7 +76,13 @@
         {{ error }}
       </el-alert>
 
-      <el-table v-else :data="data" stripe class="owners-table w-full" style="width: 100%">
+      <el-table
+        v-else
+        :data="data"
+        stripe
+        class="owners-table w-full"
+        style="width: 100%"
+      >
         <!-- fixed：横向滚动时负责人列固定，关键信息不丢 -->
         <el-table-column prop="owner" label="负责人" width="150" fixed="left">
           <template #default="{ row }">
@@ -85,34 +91,34 @@
             </el-button>
           </template>
         </el-table-column>
-        <el-table-column prop="total_gmv" label="总销售额" width="120" sortable>
+        <el-table-column prop="total_gmv" label="总销售额" min-width="120" sortable>
           <template #default="{ row }">
             ${{ row.total_gmv.toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column prop="total_orders" label="总订单数" width="100" sortable />
-        <el-table-column prop="total_visitors" label="总访客数" width="100" sortable />
-        <el-table-column prop="avg_order_value" label="平均客单价" width="120" sortable>
+        <el-table-column prop="total_orders" label="总订单数" min-width="100" sortable />
+        <el-table-column prop="total_visitors" label="总访客数" min-width="100" sortable />
+        <el-table-column prop="avg_order_value" label="平均客单价" min-width="120" sortable>
           <template #default="{ row }">
             ${{ row.avg_order_value.toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column prop="total_spend" label="Facebook广告花费" width="150" sortable>
+        <el-table-column prop="total_spend" label="Facebook广告花费" min-width="150" sortable>
           <template #default="{ row }">
             ${{ row.total_spend.toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column prop="tt_total_spend" label="TikTok广告花费" width="150" sortable>
+        <el-table-column prop="tt_total_spend" label="TikTok广告花费" min-width="150" sortable>
           <template #default="{ row }">
             ${{ row.tt_total_spend.toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column prop="total_spend_all" label="总广告花费" width="120" sortable>
+        <el-table-column prop="total_spend_all" label="总广告花费" min-width="120" sortable>
           <template #default="{ row }">
             ${{ row.total_spend_all.toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column prop="roas" label="ROAS" width="112" sortable>
+        <el-table-column prop="roas" label="ROAS" min-width="112" sortable>
           <!-- 插槽：按阈值展示不同 tag，比纯数字更易扫读 -->
           <template #default="{ row }">
             <el-tag v-if="row.roas === null" type="info" size="small" effect="plain">
@@ -128,7 +134,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="conversion_rate" label="转化率" width="110" sortable>
+        <el-table-column prop="conversion_rate" label="转化率" min-width="110" sortable>
           <template #default="{ row }">
             <span class="text-sm tabular-nums text-gray-800">
               {{ row.conversion_rate.toFixed(2) }}%

@@ -253,6 +253,25 @@ def _get_order_beijing_time(order: Dict[str, Any]) -> Optional[datetime]:
         return None
 
 
+def _auto_disable_store_if_double_404(
+    api: ShoplazzaAPI,
+    shop_domain: str,
+    db: Database,
+) -> bool:
+    """
+    若 ShoplazzaAPI 在本次请求的 _make_request 重试序列中连续两次收到 HTTP 404，
+    则调用 disable_store，避免失效域名持续拖累同步。
+    返回 True 表示已执行禁用（或无需再拉后续接口）。
+    """
+    if not getattr(api, "_auto_disable_double_404", False):
+        return False
+    db.disable_store(
+        shop_domain,
+        reason="OpenAPI 连续两次 HTTP 404（店铺不可用或域名失效）",
+    )
+    return True
+
+
 def sync_store_data(shop_domain: str, access_token: str, 
                    start_time: datetime, end_time: datetime,
                    target_date: datetime.date = None) -> Dict[str, Any]:
@@ -314,6 +333,11 @@ def sync_store_data(shop_domain: str, access_token: str,
             indicator=['uv']  # 只获取访客数
         )
         
+        if _auto_disable_store_if_double_404(api, shop_domain, db):
+            result['error'] = "OpenAPI 连续两次 HTTP 404，店铺已自动禁用"
+            result['success'] = False
+            return result
+        
         # 检查数据分析API是否失败（返回None表示API调用失败）
         analysis_api_failed = (analysis_data_daily is None)
         if analysis_api_failed:
@@ -326,15 +350,20 @@ def sync_store_data(shop_domain: str, access_token: str,
             placed_at_max=placed_at_max
         )
         
+        if _auto_disable_store_if_double_404(api, shop_domain, db):
+            result['error'] = "OpenAPI 连续两次 HTTP 404，店铺已自动禁用"
+            result['success'] = False
+            return result
+        
         # 检查订单API是否失败（返回None表示API调用失败）
         orders_api_failed = (orders_data is None)
         if orders_api_failed:
             orders_data = []
         
-        # 如果两个关键API都失败了，仅记录错误并跳过，不自动禁用店铺（由人工在后台决定是否禁用）
+        # 若两路 API 仍均失败（且非连续 404 已处理），仅记录并跳过
         if orders_api_failed and analysis_api_failed:
             fail_reason = f"订单API和数据分析API重试2次后均失败（日期：{target_date}）"
-            logger.error(f"店铺 {shop_domain} API 均失败，本次跳过（未禁用店铺）: {fail_reason}")
+            logger.error(f"店铺 {shop_domain} API 均失败，本次跳过: {fail_reason}")
             result['error'] = f"API调用失败，本次跳过: {fail_reason}"
             result['success'] = False
             return result
@@ -1107,6 +1136,7 @@ def sync_store_data_for_ten_minutes(
     }
     
     try:
+        db = Database()
         # 1. 收集订单数据（按支付时间查询）
         placed_at_min = datetime_to_iso8601(start_time)
         placed_at_max = datetime_to_iso8601(end_time)
@@ -1115,6 +1145,11 @@ def sync_store_data_for_ten_minutes(
             placed_at_min=placed_at_min,
             placed_at_max=placed_at_max
         )
+        
+        if _auto_disable_store_if_double_404(api, shop_domain, db):
+            result['error'] = "OpenAPI 连续两次 HTTP 404，店铺已自动禁用"
+            result['success'] = False
+            return result
         
         # 检查订单API是否失败（返回None表示API调用失败）
         orders_api_failed = (orders_data is None)
@@ -1326,13 +1361,18 @@ def sync_store_data_for_ten_minutes(
             filter_crawler_type=''  # 不过滤爬虫流量（空字符串）
         )
         
+        if _auto_disable_store_if_double_404(api, shop_domain, db):
+            result['error'] = "OpenAPI 连续两次 HTTP 404，店铺已自动禁用"
+            result['success'] = False
+            return result
+        
         # 检查数据分析API是否失败（返回None表示API调用失败）
         analysis_api_failed = (analysis_data is None)
         
-        # 如果两个关键API都失败了，仅记录错误并跳过，不自动禁用店铺（由人工在后台决定是否禁用）
+        # 若两路 API 仍均失败（且非连续 404 已处理），仅记录并跳过
         if orders_api_failed and analysis_api_failed:
             fail_reason = f"订单API和数据分析API重试2次后均失败（时间段：{start_time} - {end_time}）"
-            logger.error(f"店铺 {shop_domain} API 均失败，本次跳过（未禁用店铺）: {fail_reason}")
+            logger.error(f"店铺 {shop_domain} API 均失败，本次跳过: {fail_reason}")
             result['error'] = f"API调用失败，本次跳过: {fail_reason}"
             result['success'] = False
             return result

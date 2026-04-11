@@ -1,5 +1,7 @@
 <template>
-  <div class="dashboard">
+  <PageShell>
+    <PageHeaderBar title="看板" />
+    <div class="dashboard-inner w-full">
     <!-- 筛选条件 -->
     <DashboardFilters v-model="filters" @change="handleFiltersChange" />
     
@@ -68,7 +70,8 @@
       
       <el-empty v-else description="该时间段内没有数据" />
     </div>
-  </div>
+    </div>
+  </PageShell>
 </template>
 
 <script setup lang="ts">
@@ -80,6 +83,8 @@ import DashboardSummary from '../components/DashboardSummary.vue'
 import DashboardCompare, { type CompareRange } from '../components/DashboardCompare.vue'
 import { ElSkeleton, ElAlert, ElCard, ElTable, ElTableColumn, ElEmpty } from 'element-plus'
 import { getCurrentUser } from '../api/auth'
+import PageShell from '../components/PageShell.vue'
+import PageHeaderBar from '../components/PageHeaderBar.vue'
 
 // 响应式数据
 const loading = ref(false)
@@ -208,16 +213,14 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.dashboard {
-  padding: 20px;
-  max-width: 1600px;
-  margin: 0 auto;
+/* 与 StoreOps 等页一致：宽度由 PageShell 约束，此处只负责子块顶满一行 */
+.dashboard-inner {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
 }
 
-.dashboard > * {
+.dashboard-inner > * {
   width: 100%;
 }
 </style>
