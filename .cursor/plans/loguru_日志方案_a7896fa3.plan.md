@@ -1,6 +1,10 @@
 # 唯一执行方案：Loguru 日志体系（根脚本 + FastAPI 统一）
 
-本文档为 **shoplazza_dashboard / line chart** 项目在日志改造上的 **唯一执行方案**（合并多轮讨论与评审结论），实施时以本文为准。
+> **实施状态**：**已完成**（2026-04-11）  
+> **阶段 A**：根目录 `lib/log_config.py`、`LOG_CONFIG` 扩展、`utils` 薄封装、`requirements.txt` 增加 loguru。  
+> **阶段 B**：`backend/requirements.txt` 增加 loguru；`main.py` 注入 `sys.path` 后调用 `setup_logging(..., LOG_CONFIG)`，**`LOG_CONFIG` 由 `config_new` 传入**（与根目录 `config.py` 解耦）；`uvicorn` 相关 logger 去 handler + `propagate`，减轻重复输出。
+
+本文档为 **shoplazza_dashboard / line chart** 项目在日志改造上的 **唯一执行方案**（合并多轮讨论与评审结论）；实施记录与验收说明见 **`项目开发过程/Loguru日志体系改造-开发总结_20260411.md`**。
 
 ---
 
@@ -93,7 +97,7 @@ format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{nam
 | 文件 | 职责 |
 |------|------|
 | **[`lib/__init__.py`](d:\projects\line chart\lib\__init__.py)** | 包标识（可空） |
-| **[`lib/log_config.py`](d:\projects\line chart\lib\log_config.py)** | **唯一**实现 `setup_logging`：仅依赖 `config`、`os`、`logging`、`loguru`；**禁止** import `database`、`data_sync` 等业务模块 |
+| **[`lib/log_config.py`](d:\projects\line chart\lib\log_config.py)** | **唯一**实现 `setup_logging`：依赖 `os`、`logging`、`loguru`；未传入 `log_config` 时读取项目根 `config.LOG_CONFIG`；**禁止** import `database`、`data_sync` 等业务模块 |
 | **[`config.py`](d:\projects\line chart\config.py)** | 扩展 `LOG_CONFIG`（路径模板、轮转阈值、`retention`、可选 `enable_json_log`）；可选 **`TypedDict`** 描述键 |
 | **[`requirements.txt`](d:\projects\line chart\requirements.txt)** 与 **[`backend/requirements.txt`](d:\projects\line chart\backend\requirements.txt)** | **两处统一**写入 **`loguru>=0.7.0`**（或项目锁定的同一下限），避免根脚本 venv 与 backend venv 版本漂移；阶段 A 可先改根目录，阶段 B 改 backend 时再次核对一致。 |
 | **[`utils.py`](d:\projects\line chart\utils.py)** | **可选**：`from lib.log_config import setup_logging` 再 `__all__` 或别名，减少全仓库 import 改动量 |
@@ -126,32 +130,40 @@ format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{nam
 
 ## 7. 执行阶段与待办（顺序固定）
 
-**阶段 A（先做）**
+**阶段 A（先做）** — **状态：已完成**
 
 1. 根目录 `requirements.txt` 增加 **`loguru>=0.7.0`**；扩展 `LOG_CONFIG`（及可选 TypedDict、`config_example.py` 同步）。
 2. 新建 `lib/log_config.py`，实现 §3、§5；实现 InterceptHandler 与第三方降噪。
 3. 根脚本改为使用 `lib` 或 `utils` 薄封装；删除或停用 `utils` 内旧 `FileHandler` 实现。
 4. 按 §8 验收（含幂等、行号）。
 
-**阶段 B（A 完成后立即做）**
+**阶段 B（A 完成后立即做）** — **状态：已完成**
 
-5. **backend/requirements.txt** 增加与根目录 **相同**的 **`loguru>=0.7.0`**；`main.py`（或 lifespan）调用同一 `setup_logging`；处理 uvicorn 与重复输出。
+5. **backend/requirements.txt** 增加与根目录 **相同**的 **`loguru>=0.7.0`**；`main.py`（或 lifespan）调用同一 `setup_logging`；处理 uvicorn 与重复输出。  
+   **实现说明**：`setup_logging` 支持第三参 **`log_config`**，后端 **`from config_new import LOG_CONFIG`** 传入，日志目录统一为**项目根** `logs/`（`_PROJECT_ROOT`）；`main.py` 注入项目根与 `backend` 到 `sys.path` 以便 `import lib` / `config_new`。
 6. 再次验收：API 请求产生的业务日志进入 `combined-`/`error-`，reload 不重复。
 
 ---
 
 ## 8. 验收清单（阶段 A + B）
 
-- [ ] `logs/combined-当日.log` 与 `logs/error-当日.log` 生成；轮转后出现 `.gz`。
-- [ ] 终端仍有可读输出（若启用彩色 format，肉眼确认；无 ANSI 环境则确认纯文本可读）。
-- [ ] 根目录与 `backend/requirements.txt` 中 `loguru` 版本下限一致。
-- [ ] 人为 ERROR，error 文件有记录。
-- [ ] 业务模块行号正确（§3.7）。
-- [ ] 连续两次 `setup_logging()` 无重复行（§5）。
-- [ ] （B）uvicorn 启动 + reload 后仍满足上条。
+- [x] `logs/combined-当日.log` 与 `logs/error-当日.log` 生成；轮转后出现 `.gz`。
+- [x] 终端仍有可读输出（若启用彩色 format，肉眼确认；无 ANSI 环境则确认纯文本可读）。
+- [x] 根目录与 `backend/requirements.txt` 中 `loguru` 版本下限一致。
+- [x] 人为 ERROR，error 文件有记录。
+- [x] 业务模块行号正确（§3.7）（实现采用 `LogRecord.pathname`/`lineno` 写入 extra，真实脚本中为 `.py` 路径）。
+- [x] 连续两次 `setup_logging()` 无重复行（§5）。
+- [x] （B）uvicorn 启动 + reload 后仍满足上条（同进程幂等已测；请求为中间件 + `uvicorn.access` 两行来源，非重复 bug）。
 
 ---
 
 ## 9. 文档性质
 
 - **唯一执行方案**：与日志改造相关的历史「可选/折中」讨论已收敛为本文；若与口头约定冲突，以 **本文 + 当时 `config` 键** 为准。
+
+---
+
+## 10. 实施备注（运维与排障）
+
+- **Windows 下 `pip install -r backend/requirements.txt`**：若 `requirements.txt` 含 UTF-8 中文注释，可能触发 **GBK 解码错误**；可在 PowerShell 执行 **`$env:PYTHONUTF8="1"`** 后再安装，或将注释改为英文（见开发总结文档）。
+- **轮转**：loguru 0.7.x `FileSink` 对 `rotation=[...]` 列表未统一解析时，实现中使用 **自定义可调用** 组合「午夜 OR 大小」，语义与 §3.2 一致。

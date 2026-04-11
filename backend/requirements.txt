@@ -1,5 +1,8 @@
 # FastAPI Backend - Python Dependencies
 
+# 与项目根 requirements.txt 保持同一下限，避免 venv 漂移
+loguru>=0.7.0
+
 # FastAPI framework
 fastapi>=0.104.1
 

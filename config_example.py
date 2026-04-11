@@ -76,6 +76,10 @@ LOG_CONFIG = {
     'log_file': 'logs/app.log',
     'max_bytes': 10 * 1024 * 1024,  # 10MB
     'backup_count': 5,
+    'rotation_midnight': '00:00',
+    'retention': '30 days',
+    'enable_json_log': False,
+    'error_diagnose': False,
     'log_level': 'INFO'
 }
 

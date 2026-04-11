@@ -113,16 +113,9 @@ def get_hour_range(start_date: datetime, end_date: datetime) -> list:
 
 
 def setup_logging(log_file: str = 'logs/app.log', log_level: str = 'INFO'):
-    """配置日志"""
-    import os
-    os.makedirs(os.path.dirname(log_file), exist_ok=True)
-    
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper()),
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file, encoding='utf-8'),
-            logging.StreamHandler()
-        ]
-    )
+    """配置日志（实现见 lib.log_config，此处薄封装以减少全仓库 import 改动）。"""
+    from config import LOG_CONFIG
+    from lib.log_config import setup_logging as _setup
+
+    _setup(log_file, log_level, LOG_CONFIG)
 
