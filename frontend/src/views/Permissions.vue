@@ -1,15 +1,30 @@
 <template>
-  <div class="permissions-page">
-    <div class="permissions-container">
-      <h2>权限管理</h2>
-      
-      <div class="permissions-content">
-        <!-- 左侧：用户列表 -->
-        <div class="users-section">
-          <h3>用户列表</h3>
+  <!-- 与其它后台页统一外壳；主从布局用 grid，小屏上下堆叠 -->
+  <PageShell>
+    <PageHeaderBar title="权限管理" />
+
+    <div v-loading="loading">
+      <div class="grid grid-cols-1 gap-6 xl:grid-cols-12">
+        <!-- 左侧 Master：用户表（可搜索，仍为同一套 handleUserSelect 数据） -->
+        <el-card
+          class="rounded-xl border border-gray-100 shadow-sm xl:col-span-4"
+          shadow="never"
+        >
+          <div
+            class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <h3 class="text-lg font-semibold text-gray-900">用户列表</h3>
+            <el-input
+              v-model="userSearch"
+              placeholder="搜索用户名"
+              clearable
+              class="max-w-full sm:max-w-[200px]"
+            />
+          </div>
           <el-table
-            :data="users"
+            :data="filteredUsers"
             highlight-current-row
+            class="w-full"
             @current-change="handleUserSelect"
             style="width: 100%"
           >
@@ -17,65 +32,110 @@
             <el-table-column prop="username" label="用户名" />
             <el-table-column prop="role" label="角色" width="100">
               <template #default="{ row }">
-                <el-tag :type="row.role === 'admin' ? 'danger' : 'info'">
+                <el-tag :type="row.role === 'admin' ? 'danger' : 'info'" size="small">
                   {{ row.role === 'admin' ? '管理员' : '普通用户' }}
                 </el-tag>
               </template>
             </el-table-column>
           </el-table>
-        </div>
-        
-        <!-- 右侧：负责人授权 -->
-        <div class="owners-section">
-          <h3>负责人授权</h3>
-          <div v-if="!selectedUser" class="empty-state">
+        </el-card>
+
+        <!-- 右侧 Detail：负责人卡片勾选 + 功能开关（提交 payload 与原先 checkbox 完全一致） -->
+        <el-card
+          class="rounded-xl border border-gray-100 shadow-sm xl:col-span-8"
+          shadow="never"
+        >
+          <h3 class="mb-4 text-lg font-semibold text-gray-900">权限配置</h3>
+          <div v-if="!selectedUser" class="py-12 text-center">
             <el-empty description="请先选择一个用户" />
           </div>
           <div v-else>
-            <div class="selected-user-info">
-              <el-tag type="info" size="large">
+            <div class="mb-6">
+              <el-tag type="success" size="large" effect="plain">
                 当前用户：{{ selectedUser.username }}
-                <span v-if="selectedUser.role === 'admin'" class="admin-tag">（管理员）</span>
+                <span v-if="selectedUser.role === 'admin'" class="ml-1 text-amber-600">
+                  （管理员）
+                </span>
               </el-tag>
             </div>
-            
-            <div v-if="selectedUser.role === 'admin'" class="admin-notice">
+
+            <div v-if="selectedUser.role === 'admin'">
               <el-alert type="warning" :closable="false" show-icon>
                 管理员拥有所有权限，无需授权
               </el-alert>
             </div>
-            
-            <div v-else class="owners-checkbox-list">
-              <div class="permissions-section">
-                <h4>负责人权限</h4>
-                <el-checkbox-group v-model="selectedOwners" @change="handleOwnersChange">
-                  <div class="checkbox-item" v-for="owner in allOwners" :key="owner">
-                    <el-checkbox :label="owner">{{ owner }}</el-checkbox>
+
+            <div v-else class="space-y-8">
+              <section>
+                <h4 class="mb-3 text-base font-semibold text-gray-800">负责人授权</h4>
+                <el-checkbox-group
+                  v-model="selectedOwners"
+                  class="w-full"
+                  @change="handleOwnersChange"
+                >
+                  <div class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+                    <div
+                      v-for="owner in allOwners"
+                      :key="owner"
+                      :class="[
+                        'rounded-lg border p-3 transition-all',
+                        selectedOwners.includes(owner)
+                          ? 'border-[var(--el-color-primary)] bg-[var(--el-color-primary-light-9)]'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      ]"
+                    >
+                      <el-checkbox :label="owner" class="owner-grid-checkbox w-full">
+                        <span class="text-sm font-medium text-gray-800">{{ owner }}</span>
+                      </el-checkbox>
+                    </div>
                   </div>
                 </el-checkbox-group>
-              </div>
-              
-              <div class="permissions-section">
-                <h4>功能权限</h4>
-                <div class="extended-permissions">
-                  <el-checkbox v-model="canViewDashboard" @change="handleExtendedPermissionsChange">
-                    允许查看看板总数据和折线图
-                  </el-checkbox>
-                  <el-checkbox v-model="canEditMappings" @change="handleExtendedPermissionsChange">
-                    允许编辑映射
-                  </el-checkbox>
-                  <el-checkbox v-model="canViewStoreOps" @change="handleExtendedPermissionsChange">
-                    允许查看店铺运营与员工归因
-                  </el-checkbox>
+              </section>
+
+              <section>
+                <h4 class="mb-3 text-base font-semibold text-gray-800">功能权限</h4>
+                <div class="divide-y divide-gray-100 rounded-lg border border-gray-100 bg-white">
+                  <div class="flex items-start justify-between gap-4 px-4 py-4">
+                    <div class="min-w-0">
+                      <div class="font-medium text-gray-900">允许查看看板总数据和折线图</div>
+                      <p class="mt-1 text-sm text-gray-500">
+                        控制仪表盘汇总数据与折线图的可见性
+                      </p>
+                    </div>
+                    <el-switch
+                      v-model="canViewDashboard"
+                      @change="handleExtendedPermissionsChange"
+                    />
+                  </div>
+                  <div class="flex items-start justify-between gap-4 px-4 py-4">
+                    <div class="min-w-0">
+                      <div class="font-medium text-gray-900">允许编辑映射</div>
+                      <p class="mt-1 text-sm text-gray-500">店铺与广告账户负责人映射的编辑入口</p>
+                    </div>
+                    <el-switch
+                      v-model="canEditMappings"
+                      @change="handleExtendedPermissionsChange"
+                    />
+                  </div>
+                  <div class="flex items-start justify-between gap-4 px-4 py-4">
+                    <div class="min-w-0">
+                      <div class="font-medium text-gray-900">允许查看店铺运营与员工归因</div>
+                      <p class="mt-1 text-sm text-gray-500">店铺运营页及相关归因数据</p>
+                    </div>
+                    <el-switch
+                      v-model="canViewStoreOps"
+                      @change="handleExtendedPermissionsChange"
+                    />
+                  </div>
                 </div>
-              </div>
-              
-              <div class="actions">
+              </section>
+
+              <div class="flex flex-wrap gap-3 pt-2">
                 <el-button
                   type="primary"
                   :loading="saving"
-                  @click="handleSave"
                   :disabled="!hasChanges"
+                  @click="handleSave"
                 >
                   保存权限
                 </el-button>
@@ -83,10 +143,10 @@
               </div>
             </div>
           </div>
-        </div>
+        </el-card>
       </div>
     </div>
-  </div>
+  </PageShell>
 </template>
 
 <script setup lang="ts">
@@ -101,11 +161,22 @@ import {
   updateUserPermissions,
   type PermissionUser
 } from '../api/permissions'
+import PageShell from '../components/PageShell.vue'
+import PageHeaderBar from '../components/PageHeaderBar.vue'
 
 const router = useRouter()
 
 // 数据
 const users = ref<PermissionUser[]>([])
+const userSearch = ref('')
+
+const filteredUsers = computed(() => {
+  const q = userSearch.value.trim().toLowerCase()
+  if (!q) return users.value
+  return users.value.filter(
+    (u) => u.username.toLowerCase().includes(q) || String(u.id).includes(q)
+  )
+})
 const allOwners = ref<string[]>([])
 const selectedUser = ref<PermissionUser | null>(null)
 const selectedOwners = ref<string[]>([])
@@ -275,103 +346,10 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.permissions-page {
-  min-height: 100vh;
-  padding: 20px;
-  background: #f5f5f5;
-}
-
-.permissions-container {
-  max-width: 1600px;
-  margin: 0 auto;
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.permissions-container h2 {
-  margin-bottom: 20px;
-  font-size: 24px;
-  font-weight: 600;
-  color: #333;
-}
-
-.permissions-content {
-  display: flex;
-  gap: 20px;
-}
-
-.users-section {
-  flex: 1;
-  min-width: 300px;
-}
-
-.owners-section {
-  flex: 1;
-  min-width: 400px;
-}
-
-.users-section h3,
-.owners-section h3 {
-  margin-bottom: 15px;
-  font-size: 18px;
-  font-weight: 600;
-  color: #333;
-}
-
-.empty-state {
-  padding: 40px 0;
-}
-
-.selected-user-info {
-  margin-bottom: 20px;
-}
-
-.admin-tag {
-  margin-left: 8px;
-  color: #f56c6c;
-}
-
-.admin-notice {
-  margin-top: 20px;
-}
-
-.owners-checkbox-list {
-  margin-top: 20px;
-}
-
-.permissions-section {
-  margin-bottom: 30px;
-}
-
-.permissions-section h4 {
-  margin-bottom: 15px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #333;
-}
-
-.extended-permissions {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.checkbox-item {
-  margin-bottom: 12px;
-}
-
-.actions {
-  margin-top: 30px;
-  display: flex;
-  gap: 10px;
-}
-
-@media (max-width: 1200px) {
-  .permissions-content {
-    flex-direction: column;
-  }
+.owner-grid-checkbox :deep(.el-checkbox__label) {
+  width: 100%;
+  white-space: normal;
+  line-height: 1.35;
 }
 </style>
 

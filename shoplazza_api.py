@@ -39,6 +39,8 @@ class ShoplazzaAPI:
         }
         # 记录最后一次API失败信息（用于自动禁用店铺）
         self._last_api_failure = None
+        # 单次 _make_request 内连续两次 HTTP 404 时置位，由 data_sync 调用 disable_store
+        self._auto_disable_double_404 = False
     
     def _make_request(self, method: str, endpoint: str, params: Optional[Dict] = None, 
                      max_retries: int = None) -> Optional[Dict[str, Any]]:
@@ -58,6 +60,7 @@ class ShoplazzaAPI:
             max_retries = API_CONFIG['max_retries']
         
         url = f"{self.base_url}{endpoint}"
+        consecutive_404 = 0
         
         for attempt in range(max_retries + 1):
             try:
@@ -69,11 +72,42 @@ class ShoplazzaAPI:
                     timeout=API_CONFIG['timeout'],
                     verify=False  # 禁用SSL验证（内网环境）
                 )
+                status_code = response.status_code
+                
+                if status_code == 404:
+                    consecutive_404 += 1
+                    err_text = f"404 Client Error: Not Found for url: {url}"
+                    self._last_api_failure = {
+                        'url': url,
+                        'error': err_text,
+                        'endpoint': endpoint,
+                        'status_code': 404,
+                    }
+                    if consecutive_404 >= 2:
+                        self._auto_disable_double_404 = True
+                        logger.warning(
+                            f"店铺 {self.shop_domain} OpenAPI 连续两次返回 HTTP 404，"
+                            f"已标记自动禁用: {endpoint}"
+                        )
+                        return None
+                    if attempt < max_retries:
+                        wait_time = API_CONFIG['retry_delay'] * (attempt + 1)
+                        logger.warning(
+                            f"API返回404（尝试 {attempt + 1}/{max_retries + 1}）: {url}，{wait_time}秒后重试"
+                        )
+                        time.sleep(wait_time)
+                        continue
+                    logger.error(
+                        f"API请求最终失败（重试{max_retries}次后仍失败）: {url}, 错误: {err_text}"
+                    )
+                    return None
+                
+                consecutive_404 = 0
                 response.raise_for_status()
-                # API调用成功，清除失败标记
                 self._last_api_failure = None
                 return response.json()
             except requests.exceptions.RequestException as e:
+                consecutive_404 = 0
                 if attempt < max_retries:
                     wait_time = API_CONFIG['retry_delay'] * (attempt + 1)
                     logger.warning(f"API请求失败（尝试 {attempt + 1}/{max_retries + 1}）: {e}，{wait_time}秒后重试")

@@ -1,23 +1,37 @@
 <template>
-  <el-header class="app-header">
-    <div class="header-left">
-      <h1 class="logo">Shoplazza Dashboard</h1>
+  <!-- 顶栏：品牌区 + 横向菜单 + 用户区；业务逻辑（权限菜单）不变 -->
+  <el-header
+    class="sticky top-0 z-50 flex h-[60px] items-center justify-between border-b border-gray-100 bg-white px-4 shadow-sm sm:px-6"
+  >
+    <div class="flex min-w-0 flex-1 items-center gap-6">
+      <div class="flex shrink-0 items-center gap-2">
+        <el-icon class="text-2xl text-[var(--el-color-primary)]" aria-hidden="true">
+          <Monitor />
+        </el-icon>
+        <h1 class="truncate text-lg font-semibold text-[var(--el-color-primary)] sm:text-xl">
+          Shoplazza Dashboard
+        </h1>
+      </div>
       <el-menu
         :default-active="activeMenu"
         mode="horizontal"
+        ellipsis
+        class="header-menu min-w-0 flex-1 border-none"
         @select="handleMenuSelect"
-        class="header-menu"
       >
         <el-menu-item index="/dashboard">看板</el-menu-item>
         <el-menu-item index="/owners">负责人汇总</el-menu-item>
         <el-menu-item index="/mappings">映射编辑</el-menu-item>
+        <el-menu-item v-if="canMappingsAudit" index="/mapping-audit">映射操作记录</el-menu-item>
         <el-menu-item v-if="canStoreOps" index="/store-ops">店铺运营</el-menu-item>
         <el-menu-item v-if="isAdmin" index="/permissions">权限管理</el-menu-item>
       </el-menu>
     </div>
-    <div class="header-right">
+    <div class="flex shrink-0 items-center pl-2">
       <el-dropdown @command="handleCommand">
-        <span class="user-info">
+        <span
+          class="flex cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm text-gray-800 transition-colors hover:bg-gray-100"
+        >
           <el-icon><User /></el-icon>
           <span>{{ username }}</span>
           <el-icon class="el-icon--right"><CaretBottom /></el-icon>
@@ -35,7 +49,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { User, CaretBottom } from '@element-plus/icons-vue'
+import { User, CaretBottom, Monitor } from '@element-plus/icons-vue'
 import { logout } from '../api/auth'
 import { ElMessage } from 'element-plus'
 
@@ -45,6 +59,7 @@ const route = useRoute()
 const username = ref('')
 const userRole = ref('')
 const canViewStoreOps = ref(false)
+const canEditMappings = ref(false)
 
 // 当前激活的菜单项
 const activeMenu = computed(() => {
@@ -61,6 +76,11 @@ const canStoreOps = computed(() => {
   return userRole.value === 'admin' || canViewStoreOps.value === true
 })
 
+// 与后端审计接口一致：管理员或可编辑映射
+const canMappingsAudit = computed(() => {
+  return userRole.value === 'admin' || canEditMappings.value === true
+})
+
 // 加载用户信息
 const loadUserInfo = () => {
   const userStr = localStorage.getItem('user')
@@ -70,9 +90,11 @@ const loadUserInfo = () => {
       username.value = user.username || '用户'
       userRole.value = user.role || 'user'
       canViewStoreOps.value = user.can_view_store_ops === true
+      canEditMappings.value = user.can_edit_mappings === true
     } catch (e) {
       username.value = '用户'
       userRole.value = 'user'
+      canEditMappings.value = false
     }
   }
 }
@@ -109,56 +131,13 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.app-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 20px;
-  background: #fff;
-  border-bottom: 1px solid var(--el-border-color-light);
-  height: 60px;
-  line-height: 60px;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 30px;
-}
-
-.logo {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--el-color-primary);
-}
-
+/* 横向菜单与顶栏高度对齐，去掉 Element 默认底边框以配合自定义顶栏 */
 .header-menu {
-  border-bottom: none;
+  border-bottom: none !important;
+  --el-menu-horizontal-height: 60px;
 }
-
-.header-right {
-  display: flex;
-  align-items: center;
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  padding: 0 12px;
-  border-radius: 4px;
-  transition: background-color 0.3s;
-}
-
-.user-info:hover {
-  background-color: var(--el-bg-color-page);
-}
-
-.user-info span {
-  font-size: 14px;
-  color: var(--el-text-color-primary);
+.header-menu :deep(.el-menu-item) {
+  border-bottom: none !important;
 }
 </style>
 

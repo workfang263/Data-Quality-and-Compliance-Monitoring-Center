@@ -7,18 +7,41 @@
 
 启动与重启：见 backend/README.md
 """
+from __future__ import annotations
+
+import logging
+import sys
+import time
+from pathlib import Path
+
+# 注入项目根（lib 包）与 backend（config_new），不依赖「必须从哪一目录启动 uvicorn」
+_here = Path(__file__).resolve()
+_BACKEND_ROOT = _here.parents[1]
+_REPO_ROOT = _here.parents[2]
+for _p in (_BACKEND_ROOT, _REPO_ROOT):
+    _s = str(_p)
+    if _s not in sys.path:
+        sys.path.insert(0, _s)
+
+from lib.log_config import setup_logging
+from config_new import LOG_CONFIG
+
+setup_logging(LOG_CONFIG['log_file'], LOG_CONFIG['log_level'], LOG_CONFIG)
+
+
+def _uvicorn_loggers_use_root_only() -> None:
+    """去掉 uvicorn 自带 handler，避免与根 InterceptHandler 叠加导致同一条日志重复。"""
+    for name in ('uvicorn', 'uvicorn.error', 'uvicorn.access'):
+        lg = logging.getLogger(name)
+        lg.handlers.clear()
+        lg.propagate = True
+
+
+_uvicorn_loggers_use_root_only()
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import logging
-import time
-
-# 配置日志输出到控制台
-logging.basicConfig(
-    level=logging.INFO,  # 设置日志级别为INFO，这样ERROR和WARNING都会显示
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +115,7 @@ from app.api import (
     dashboard_api,
     owners_api,
     mappings_api,
+    audit_api,
     auth_api,
     permissions_api,
     store_ops_api,
@@ -105,6 +129,9 @@ app.include_router(owners_api.router)
 
 # 注册映射编辑API路由
 app.include_router(mappings_api.router)
+
+# 注册映射审计 API
+app.include_router(audit_api.router)
 
 # 注册用户认证API路由
 app.include_router(auth_api.router)

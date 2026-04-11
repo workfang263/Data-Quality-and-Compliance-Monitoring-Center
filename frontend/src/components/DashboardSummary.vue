@@ -1,21 +1,24 @@
 <template>
   <div class="dashboard-summary">
-    <el-row :gutter="20">
-      <el-col :xs="12" :sm="8" :md="6" :lg="3" :xl="3" v-for="metric in metrics" :key="metric.key" style="min-width: 180px;">
-        <el-card shadow="hover" class="summary-card">
-          <div class="summary-content">
-            <div class="summary-label">{{ metric.label }}</div>
-            <div class="summary-value">{{ metric.value }}</div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <!--
+      用 CSS Grid 替代 el-row/el-col：
+      1) 大屏固定 7 等分，7 张指标卡刚好铺满，不会在右侧留 1 格空白
+      2) 小屏自动降列，避免卡片过窄
+    -->
+    <div class="summary-grid">
+      <el-card v-for="metric in metrics" :key="metric.key" shadow="hover" class="summary-card">
+        <div class="summary-content">
+          <div class="summary-label">{{ metric.label }}</div>
+          <div class="summary-value">{{ metric.value }}</div>
+        </div>
+      </el-card>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ElRow, ElCol, ElCard } from 'element-plus'
+import { ElCard } from 'element-plus'
 import type { DashboardDataItem } from '../api/dashboard'
 
 // Props
@@ -164,10 +167,28 @@ const formatNumber = (num: number, decimals: number, unit: string): string => {
   margin-bottom: 20px;
 }
 
+.summary-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 640px) {
+  .summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .summary-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}
+
 .summary-card {
   text-align: center;
   transition: all 0.3s;
-  min-height: 120px;
+  min-height: 108px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -178,7 +199,7 @@ const formatNumber = (num: number, decimals: number, unit: string): string => {
 }
 
 .summary-content {
-  padding: 15px 10px;
+  padding: 12px 8px;
   width: 100%;
   box-sizing: border-box;
   overflow: hidden;

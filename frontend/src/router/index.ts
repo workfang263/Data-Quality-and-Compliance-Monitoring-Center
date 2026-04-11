@@ -66,6 +66,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/mapping-audit',
+    name: 'MappingAudit',
+    component: () => import('../views/MappingAuditLog.vue'),
+    meta: {
+      title: '映射操作记录',
+      requiresAuth: true,
+      requiresMappingsAudit: true
+    }
+  },
+  {
     path: '/permissions',
     name: 'Permissions',
     component: () => import('../views/Permissions.vue'),
@@ -153,6 +163,27 @@ router.beforeEach((to, from, next) => {
       try {
         const user = JSON.parse(userStr)
         if (user.role === 'admin' || user.can_view_store_ops === true) {
+          next()
+          return
+        }
+      } catch (e) {
+        next('/login')
+        return
+      }
+      next('/dashboard')
+      return
+    }
+
+    // 映射操作记录：管理员或可编辑映射的用户
+    if (to.meta.requiresMappingsAudit) {
+      const userStr = localStorage.getItem('user')
+      if (!userStr) {
+        next('/login')
+        return
+      }
+      try {
+        const user = JSON.parse(userStr)
+        if (user.role === 'admin' || user.can_edit_mappings === true) {
           next()
           return
         }

@@ -1,16 +1,16 @@
 <template>
-  <div class="min-h-screen bg-[#F8FAFC] font-sans text-slate-900 antialiased">
-    <main class="mx-auto max-w-7xl">
-      <header
-        class="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200 bg-white/80 px-4 backdrop-blur-md sm:px-8"
-      >
-        <h1 class="text-xl font-semibold text-slate-800">店铺运营概览</h1>
-      </header>
-
-      <div class="p-4 sm:p-8">
-        <p class="mb-6 text-sm leading-relaxed text-slate-500">
-          数据来自店匠同步；金额按北京时间业务日汇总。两店数据分开展示。
-        </p>
+  <PageShell>
+    <PageHeaderBar
+      title="店铺运营概览"
+      subtitle="数据来自店匠同步；金额按北京时间业务日汇总。两店数据分开展示。"
+    >
+      <template #actions>
+        <el-button type="primary" :loading="syncing" @click="handleSync">
+          <el-icon class="mr-1"><RefreshRight /></el-icon>
+          立即同步
+        </el-button>
+      </template>
+    </PageHeaderBar>
 
         <section
           class="mb-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"
@@ -35,17 +35,6 @@
                 />
               </div>
             </div>
-            <button
-              type="button"
-              class="flex h-10 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:px-6"
-              :disabled="syncing"
-              @click="handleSync"
-            >
-              <el-icon class="text-base" :class="{ 'animate-spin': syncing }">
-                <RefreshRight />
-              </el-icon>
-              立即同步
-            </button>
           </div>
         </section>
 
@@ -209,9 +198,7 @@
             请选择日期范围
           </div>
         </div>
-      </div>
-    </main>
-  </div>
+  </PageShell>
 </template>
 
 <script setup lang="ts">
@@ -219,6 +206,8 @@ import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { ElMessage, ElNotification } from 'element-plus'
 import { RefreshRight, Shop, TopRight } from '@element-plus/icons-vue'
+import PageShell from '../components/PageShell.vue'
+import PageHeaderBar from '../components/PageHeaderBar.vue'
 import {
   fetchStoreOpsReport,
   triggerStoreOpsSync,
