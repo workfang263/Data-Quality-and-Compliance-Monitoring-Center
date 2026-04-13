@@ -1,12 +1,13 @@
 """
 utm_source 解析与员工 / 公共池归因（与方案 §3 一致）。
+员工匹配：在完整 utm_source 中按子串命中全拼，见 match_employee_slug。
 """
 from __future__ import annotations
 
 from typing import Optional, Tuple
 from urllib.parse import parse_qs, unquote, urlparse
 
-from app.services.store_ops_constants import EMPLOYEE_SLUG_SET
+from app.services.store_ops_constants import EMPLOYEE_SLUGS_ORDERED
 
 
 def extract_utm(url: Optional[str]) -> Optional[str]:
@@ -36,16 +37,20 @@ def landing_has_utm_source_param(url: Optional[str]) -> bool:
 
 def match_employee_slug(utm_raw: Optional[str]) -> Optional[str]:
     """
-    utm_source 第一个 '-' 之前的段，转小写后与白名单匹配。
+    在完整 utm_source 值中查找员工全拼：转小写后，若子串包含某位员工 slug 即命中。
+
+    多人同时出现在同一串中时，按 EMPLOYEE_SLUGS_ORDERED 从左到右取「第一个在串中
+    存在的 slug」（名单优先级，非按字符出现先后）。短 slug（如 kiki）可能在无关
+    英文词中误命中，属业务可接受范围。
+
     未命中返回 None。
     """
-    if not utm_raw:
+    if not utm_raw or not str(utm_raw).strip():
         return None
-    seg = utm_raw.split("-")[0].strip().lower()
-    if not seg:
-        return None
-    if seg in EMPLOYEE_SLUG_SET:
-        return seg
+    haystack = utm_raw.strip().lower()
+    for slug in EMPLOYEE_SLUGS_ORDERED:
+        if slug in haystack:
+            return slug
     return None
 
 

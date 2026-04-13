@@ -7,6 +7,7 @@ import logging
 import os
 import uuid
 from datetime import date
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import (
@@ -29,7 +30,10 @@ from config_new import store_ops_https_verify
 
 from app.services.database_new import Database
 from app.services.store_ops_constants import STORE_OPS_SHOP_DOMAINS
-from app.services.store_ops_report import build_store_ops_report_payload
+from app.services.store_ops_report import (
+    build_store_ops_report_payload,
+    merge_fb_spend_into_payload,
+)
 from app.services.store_ops_sync import default_sync_biz_dates, run_store_ops_sync
 
 logger = logging.getLogger(__name__)
@@ -224,6 +228,12 @@ async def get_store_ops_report(
     db = get_db()
     buckets = db.fetch_store_ops_daily_buckets(shops, start_date, end_date)
     payload = build_store_ops_report_payload(shops, start_date, end_date, buckets)
+    spend_by_shop_slug: Dict[str, Dict[str, Decimal]] = {}
+    for s in shops:
+        spend_by_shop_slug[s] = db.fetch_store_ops_fb_spend_by_shop_slug(
+            s, start_date, end_date
+        )
+    merge_fb_spend_into_payload(payload, spend_by_shop_slug)
     return {"code": 200, "message": "success", "data": payload}
 
 

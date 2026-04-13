@@ -119,5 +119,33 @@ def build_store_ops_report_payload(
     }
 
 
+def merge_fb_spend_into_payload(
+    payload: Dict[str, Any],
+    spend_by_shop_slug: Dict[str, Dict[str, Decimal]],
+) -> None:
+    """
+    为 payload['shops'][].employee_rows 增加 fb_spend、roas（就地修改）。
+    spend_by_shop_slug: shop_domain -> employee_slug -> 区间内 SUM(spend)。
+    ROAS：倍数 = total_sales / spend；spend==0 -> roas None；spend>0 且销售额 0 -> roas 0。
+    """
+    for shop in payload.get("shops") or []:
+        domain = shop.get("shop_domain") or ""
+        spend_map = spend_by_shop_slug.get(domain, {})
+        for row in shop.get("employee_rows") or []:
+            slug = row.get("employee_slug") or ""
+            total_sales_f = float(row.get("total_sales") or 0)
+            spend_dec = spend_map.get(slug, Decimal("0"))
+            if spend_dec < 0:
+                spend_dec = Decimal("0")
+            row["fb_spend"] = float(spend_dec.quantize(Decimal("0.01")))
+            if spend_dec == 0:
+                row["roas"] = None
+            elif total_sales_f == 0:
+                row["roas"] = 0.0
+            else:
+                q = (Decimal(str(total_sales_f)) / spend_dec).quantize(Decimal("0.01"))
+                row["roas"] = float(q)
+
+
 def _d(x: Decimal) -> float:
     return float(x.quantize(Decimal("0.0001")))

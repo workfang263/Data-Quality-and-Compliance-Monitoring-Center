@@ -13,6 +13,10 @@ export interface StoreOpsReportShop {
     allocated_from_public_pool: number
     total_sales: number
     direct_order_count: number
+    /** Facebook 广告花费（USD，店铺运营配置的账户汇总） */
+    fb_spend: number
+    /** 倍数 total_sales/fb_spend；无花费时为 null，前端显示 — */
+    roas: number | null
   }>
 }
 

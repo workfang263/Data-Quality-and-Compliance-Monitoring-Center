@@ -93,100 +93,21 @@
               </div>
 
               <div class="overflow-x-auto">
-                <table class="w-full border-collapse text-left">
-                  <thead>
-                    <tr class="border-b border-slate-100 bg-slate-50/30">
-                      <th
-                        class="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-500 sm:px-6 sm:py-4"
-                      >
-                        员工 Slug
-                      </th>
-                      <th
-                        class="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-500 sm:px-6 sm:py-4"
-                      >
-                        直接销售额
-                      </th>
-                      <th
-                        class="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-500 sm:px-6 sm:py-4"
-                      >
-                        公共池分摊
-                      </th>
-                      <th
-                        class="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-500 sm:px-6 sm:py-4"
-                      >
-                        合计销售额
-                      </th>
-                      <th
-                        class="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-slate-500 sm:px-6 sm:py-4"
-                      >
-                        直接订单数
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-slate-100">
-                    <tr
-                      v-for="row in shop.employee_rows"
-                      :key="row.employee_slug"
-                      class="transition-colors hover:bg-slate-50/80"
-                    >
-                      <td class="px-4 py-3 sm:px-6 sm:py-4">
-                        <div class="flex items-center gap-2">
-                          <div
-                            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold"
-                            :class="avatarClasses(row.employee_slug)"
-                          >
-                            {{ initialLetter(row.employee_slug) }}
-                          </div>
-                          <span class="text-sm font-semibold text-slate-700">
-                            {{ row.employee_slug }}
-                          </span>
-                        </div>
-                      </td>
-                      <td
-                        class="px-4 py-3 text-sm font-medium text-slate-600 sm:px-6 sm:py-4"
-                      >
-                        ${{ formatMoney(row.direct_sales) }}
-                      </td>
-                      <td
-                        class="px-4 py-3 text-sm font-medium text-slate-600 sm:px-6 sm:py-4"
-                      >
-                        ${{ formatMoney(row.allocated_from_public_pool) }}
-                      </td>
-                      <td class="px-4 py-3 sm:px-6 sm:py-4">
-                        <div
-                          class="flex items-center gap-1 text-sm font-bold text-slate-900"
-                        >
-                          ${{ formatMoney(row.total_sales) }}
-                          <el-icon
-                            v-if="row.total_sales > 0"
-                            class="text-emerald-500"
-                            :size="14"
-                          >
-                            <TopRight />
-                          </el-icon>
-                        </div>
-                      </td>
-                      <td class="px-4 py-3 text-right sm:px-6 sm:py-4">
-                        <span
-                          class="inline-flex min-w-[1.75rem] items-center justify-center rounded-full px-2.5 py-0.5 text-xs font-bold"
-                          :class="
-                            row.direct_order_count > 0
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : 'bg-slate-100 text-slate-500'
-                          "
-                        >
-                          {{ row.direct_order_count }}
-                        </span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                <StoreOpsShopEmployeeTable
+                  :ref="(el) => registerStoreOpsTableRef(shop.shop_domain, el)"
+                  :shop="shop"
+                  :sort-prop="getSortState(shop.shop_domain).prop"
+                  :sort-order="getSortState(shop.shop_domain).order"
+                  @sort-change="
+                    (p) => onSortChange(shop.shop_domain, p)
+                  "
+                />
               </div>
 
               <div
                 class="border-t border-slate-100 bg-slate-50/20 px-4 py-3 text-xs font-medium text-slate-500 sm:px-6 sm:py-4"
               >
-                共 {{ shop.employee_rows.length }} 名员工
+                共 {{ (shop.employee_rows ?? []).length }} 名员工
               </div>
             </section>
           </div>
@@ -202,44 +123,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import {
+  ref,
+  onMounted,
+  watch,
+  nextTick,
+  shallowRef,
+} from 'vue'
 import axios from 'axios'
 import { ElMessage, ElNotification } from 'element-plus'
-import { RefreshRight, Shop, TopRight } from '@element-plus/icons-vue'
+import { RefreshRight, Shop } from '@element-plus/icons-vue'
 import PageShell from '../components/PageShell.vue'
 import PageHeaderBar from '../components/PageHeaderBar.vue'
+import StoreOpsShopEmployeeTable from '../components/StoreOpsShopEmployeeTable.vue'
 import {
   fetchStoreOpsReport,
   triggerStoreOpsSync,
   type StoreOpsReportData,
 } from '../api/storeOps'
-
-const AVATAR_PALETTES: [string, string][] = [
-  ['bg-indigo-100', 'text-indigo-700'],
-  ['bg-violet-100', 'text-violet-700'],
-  ['bg-sky-100', 'text-sky-700'],
-  ['bg-emerald-100', 'text-emerald-700'],
-  ['bg-amber-100', 'text-amber-800'],
-  ['bg-rose-100', 'text-rose-700'],
-]
-
-function slugHue(slug: string): number {
-  let h = 0
-  for (let i = 0; i < slug.length; i++) {
-    h = (h + slug.charCodeAt(i) * (i + 1)) % 997
-  }
-  return h
-}
-
-function avatarClasses(slug: string): string {
-  const [bg, fg] = AVATAR_PALETTES[slugHue(slug) % AVATAR_PALETTES.length]!
-  return `${bg} ${fg}`
-}
-
-function initialLetter(slug: string): string {
-  const s = (slug || '?').trim()
-  return s ? s.charAt(0).toUpperCase() : '?'
-}
+import {
+  isSortProp,
+  type StoreOpsSortOrder,
+  type StoreOpsSortProp,
+} from '../utils/storeOpsSort'
 
 function apiErrorMessage(e: unknown): string {
   if (axios.isAxiosError(e) && e.response?.data) {
@@ -260,6 +166,116 @@ function apiErrorMessage(e: unknown): string {
 const loading = ref(false)
 const syncing = ref(false)
 const report = ref<StoreOpsReportData | null>(null)
+
+/** 按店记忆排序；loadReport 只替换 report，不清空本对象（规格 §2） */
+const sortStateByShop = ref<
+  Record<string, { prop: StoreOpsSortProp; order: StoreOpsSortOrder }>
+>({})
+
+const isSyncingHeader = ref(false)
+const headerSyncGeneration = ref(0)
+
+const tableRefByShop = shallowRef<
+  Record<string, InstanceType<typeof StoreOpsShopEmployeeTable> | null>
+>({})
+
+function registerStoreOpsTableRef(domain: string, el: unknown) {
+  if (!domain) return
+  const map = tableRefByShop.value
+  if (el) {
+    const inst = el as InstanceType<typeof StoreOpsShopEmployeeTable>
+    if (map[domain] !== inst) {
+      map[domain] = inst
+    }
+  } else if (map[domain]) {
+    delete map[domain]
+  }
+}
+
+function getSortState(domain: string): {
+  prop: StoreOpsSortProp
+  order: StoreOpsSortOrder
+} {
+  const s = sortStateByShop.value[domain]
+  if (s) return s
+  return { prop: 'direct_sales', order: 'descending' }
+}
+
+function sameSortState(
+  a: { prop: StoreOpsSortProp; order: StoreOpsSortOrder },
+  b: { prop: StoreOpsSortProp; order: StoreOpsSortOrder },
+): boolean {
+  return a.prop === b.prop && a.order === b.order
+}
+
+async function onSortChange(
+  domain: string,
+  payload: {
+    column: unknown
+    prop: string | undefined
+    order: string | null
+  },
+) {
+  if (isSyncingHeader.value) return
+
+  let nextProp: StoreOpsSortProp
+  let nextOrder: StoreOpsSortOrder
+
+  if (payload.order === 'ascending' || payload.order === 'descending') {
+    nextOrder = payload.order
+    nextProp = isSortProp(payload.prop) ? payload.prop : 'direct_sales'
+  } else {
+    // 第三态：取消排序 → 回退默认列与降序（规格 §8）
+    nextProp = 'direct_sales'
+    nextOrder = 'descending'
+  }
+
+  const next = { prop: nextProp, order: nextOrder }
+  if (sameSortState(next, getSortState(domain))) return
+
+  sortStateByShop.value = { ...sortStateByShop.value, [domain]: next }
+
+  // 同一日期内取消排序时 report 不变，watch(report) 不会跑，需单独对齐表头（规格 §8）
+  if (payload.order === null) {
+    const gen = ++headerSyncGeneration.value
+    isSyncingHeader.value = true
+    try {
+      await nextTick()
+      const st = getSortState(domain)
+      tableRefByShop.value[domain]?.applySort(st.prop, st.order)
+      await nextTick()
+      await new Promise<void>((r) => setTimeout(r, 50))
+    } finally {
+      if (gen === headerSyncGeneration.value) {
+        isSyncingHeader.value = false
+      }
+    }
+  }
+}
+
+watch(
+  () => report.value,
+  async (newReport) => {
+    if (!newReport?.shops?.length) return
+    const gen = ++headerSyncGeneration.value
+    isSyncingHeader.value = true
+    try {
+      await nextTick()
+      for (const shop of newReport.shops) {
+        const domain = shop.shop_domain
+        const st = getSortState(domain)
+        tableRefByShop.value[domain]?.applySort(st.prop, st.order)
+      }
+      await nextTick()
+      await new Promise<void>((r) => setTimeout(r, 50))
+    } finally {
+      if (gen === headerSyncGeneration.value) {
+        isSyncingHeader.value = false
+      }
+    }
+  },
+  { flush: 'post' },
+)
 
 const today = () => {
   const d = new Date()

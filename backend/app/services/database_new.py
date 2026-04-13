@@ -9,6 +9,7 @@ import os
 import json
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta, date
+from decimal import Decimal
 from collections import defaultdict
 
 # 修改导入路径：从 backend/config_new 导入
@@ -2423,6 +2424,68 @@ class Database:
         except Exception as e:
             logger.error(f"fetch_store_ops_daily_buckets 失败: {e}", exc_info=True)
             return []
+
+    def fetch_store_ops_fb_spend_by_shop_slug(
+        self,
+        shop_domain: str,
+        date_start: date,
+        date_end: date,
+    ) -> Dict[str, Decimal]:
+        """
+        按店铺运营配置的 FB 账户列表，汇总区间内花费（北京时间 DATE(time_hour)），
+        按 employee_slug 返回。owner 为「无」的账户不计入；未知 owner 记 warning 并跳过。
+        """
+        from app.services.store_ops_fb_mapping import (
+            STORE_OPS_FB_ACT_IDS_BY_SHOP,
+            STORE_OPS_OWNER_CN_TO_SLUG,
+        )
+
+        act_ids = STORE_OPS_FB_ACT_IDS_BY_SHOP.get(shop_domain.strip())
+        if not act_ids:
+            return {}
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    ph = ",".join(["%s"] * len(act_ids))
+                    sql = f"""
+                        SELECT m.owner, COALESCE(SUM(h.spend), 0) AS sum_spend
+                        FROM fb_ad_account_spend_hourly h
+                        INNER JOIN ad_account_owner_mapping m
+                            ON m.ad_account_id = h.ad_account_id
+                        WHERE h.ad_account_id IN ({ph})
+                          AND DATE(h.time_hour) >= %s AND DATE(h.time_hour) <= %s
+                          AND m.owner != %s
+                        GROUP BY m.owner
+                    """
+                    cursor.execute(
+                        sql,
+                        tuple(act_ids) + (date_start, date_end, "无"),
+                    )
+                    rows = cursor.fetchall()
+        except Exception as e:
+            logger.error(
+                "fetch_store_ops_fb_spend_by_shop_slug 失败 shop=%s: %s",
+                shop_domain,
+                e,
+                exc_info=True,
+            )
+            return {}
+
+        out: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+        for r in rows:
+            owner = (r.get("owner") or "").strip()
+            slug = STORE_OPS_OWNER_CN_TO_SLUG.get(owner)
+            if not slug:
+                if owner and owner != "无":
+                    logger.warning(
+                        "store_ops FB spend: 未识别的 owner=%s shop=%s",
+                        owner,
+                        shop_domain,
+                    )
+                continue
+            raw = r.get("sum_spend")
+            out[slug] += Decimal(str(raw)) if raw is not None else Decimal("0")
+        return dict(out)
 
     def insert_store_ops_sync_run_running(
         self,

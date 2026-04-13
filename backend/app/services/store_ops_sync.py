@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
@@ -26,7 +27,7 @@ from app.services.shoplazza_store_ops_client import (
     ShoplazzaStoreOpsClient,
     unwrap_order_detail,
 )
-from app.services.store_ops_attribution import resolve_attribution
+from app.services.store_ops_attribution import extract_utm, resolve_attribution
 from app.services.store_ops_constants import (
     STORE_OPS_SHOP_DOMAINS,
     get_store_ops_token_for_shop,
@@ -34,6 +35,26 @@ from app.services.store_ops_constants import (
 from app.services.store_ops_time import order_to_biz_date
 
 logger = logging.getLogger(__name__)
+
+# region agent log
+_AGENT_DEBUG_LOG = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+    ".cursor",
+    "debug.log",
+)
+
+
+def _agent_debug_ndjson(payload: Dict[str, Any]) -> None:
+    """NDJSON 一行写入 .cursor/debug.log；勿记录 token/PII。"""
+    try:
+        payload.setdefault("timestamp", int(time.time() * 1000))
+        with open(_AGENT_DEBUG_LOG, "a", encoding="utf-8") as _f:
+            _f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+# endregion
 
 
 def beijing_today() -> date:
@@ -145,6 +166,32 @@ def _sync_one_shop(
                 src if isinstance(src, str) else None,
                 last_u if isinstance(last_u, str) else None,
             )
+
+            # region agent log — 归因与店匠 UTM 报表差异验证（仅异常样本）
+            u_f = extract_utm(src if isinstance(src, str) else None)
+            u_l = extract_utm(last_u if isinstance(last_u, str) else None)
+            _hay = f"{u_f or ''}|{u_l or ''}".lower()
+            if "xiaoyang" in _hay and (
+                att_type == "public_pool" or slug != "xiaoyang"
+            ):
+                _agent_debug_ndjson(
+                    {
+                        "hypothesisId": "H_xiaoyang_in_utm_not_attributed",
+                        "location": "store_ops_sync._sync_one_shop",
+                        "message": "utm 含 xiaoyang 但未归给 xiaoyang 或进公共池",
+                        "data": {
+                            "shop": shop,
+                            "order_id": oid_str,
+                            "biz_date": str(biz),
+                            "attribution_type": att_type,
+                            "employee_slug": slug,
+                            "utm_decision": decision,
+                            "u_first_prefix": (u_f[:120] if u_f else None),
+                            "u_last_prefix": (u_l[:120] if u_l else None),
+                        },
+                    }
+                )
+            # endregion
 
             price = _to_decimal_price(order_detail.get("total_price"))
             rec: Dict[str, Any] = {
