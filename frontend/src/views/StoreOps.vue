@@ -105,6 +105,21 @@
               </div>
 
               <div
+                class="border-t border-slate-100 bg-slate-50/40 px-4 py-3 sm:px-6"
+              >
+                <div
+                  class="flex flex-wrap gap-x-10 gap-y-2 text-sm text-slate-800"
+                >
+                  <div>
+                    <span class="text-xs font-semibold text-slate-500">店铺总订单数（含公共池）</span>
+                    <span class="ml-2 font-bold text-slate-900">
+                      {{ shopGrandOrdersWithPublicPool(shop) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div
                 class="border-t border-slate-100 bg-slate-50/20 px-4 py-3 text-xs font-medium text-slate-500 sm:px-6 sm:py-4"
               >
                 共 {{ (shop.employee_rows ?? []).length }} 名员工
@@ -140,6 +155,7 @@ import {
   fetchStoreOpsReport,
   triggerStoreOpsSync,
   type StoreOpsReportData,
+  type StoreOpsReportShop,
 } from '../api/storeOps'
 import {
   isSortProp,
@@ -290,6 +306,20 @@ const disabledFuture = (d: Date) => d.getTime() > Date.now()
 function formatMoney(n: number) {
   if (n === undefined || n === null) return '0.00'
   return Number(n).toFixed(2)
+}
+
+function sumEmployeeDirectOrders(shop: StoreOpsReportShop): number {
+  return (shop.employee_rows ?? []).reduce(
+    (acc, row) => acc + Number(row.direct_order_count ?? 0),
+    0,
+  )
+}
+
+/** 公共池订单数 + 各员工直接订单数之和（按店） */
+function shopGrandOrdersWithPublicPool(shop: StoreOpsReportShop): number {
+  return (
+    Number(shop.public_pool_order_count ?? 0) + sumEmployeeDirectOrders(shop)
+  )
 }
 
 const loadReport = async () => {

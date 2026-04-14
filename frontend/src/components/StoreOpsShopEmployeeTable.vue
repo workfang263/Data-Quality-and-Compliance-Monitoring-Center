@@ -6,6 +6,8 @@
     row-key="employee_slug"
     border
     stripe
+    show-summary
+    :summary-method="employeeTableSummary"
     :default-sort="defaultSortConfig"
     @sort-change="onSortChange"
   >
@@ -127,7 +129,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { TableInstance } from 'element-plus'
+import type { TableColumnCtx, TableInstance } from 'element-plus'
 import { TopRight } from '@element-plus/icons-vue'
 import type { StoreOpsReportShop } from '../api/storeOps'
 import {
@@ -209,6 +211,76 @@ const sortedRows = computed((): StoreOpsEmployeeSortRow[] => {
   return copy
 })
 
+/**
+ * 表尾汇总行：对当前表格 data（与排序顺序无关，加总不变）按列求和。
+ * ROAS 汇总为表级加权：Σ合计销售额 / Σ广告花费（非行 ROAS 平均）；Σ广告花费为 0 时显示「—」。
+ */
+function employeeTableSummary(param: {
+  columns: TableColumnCtx<StoreOpsEmployeeSortRow>[]
+  data: StoreOpsEmployeeSortRow[]
+}): string[] {
+  const { columns, data } = param
+  const sums: string[] = []
+
+  for (const column of columns) {
+    const prop = column.property as keyof StoreOpsEmployeeSortRow | undefined
+
+    if (!prop) {
+      sums.push('汇总')
+      continue
+    }
+
+    switch (prop) {
+      case 'direct_sales':
+      case 'allocated_from_public_pool':
+      case 'total_sales': {
+        const sum = data.reduce(
+          (acc, row) => acc + Number(row[prop] ?? 0),
+          0,
+        )
+        sums.push(`$${formatMoney(sum)}`)
+        break
+      }
+      case 'fb_spend': {
+        const sum = data.reduce(
+          (acc, row) => acc + Number(row.fb_spend ?? 0),
+          0,
+        )
+        sums.push(`$${formatMoney(sum)}`)
+        break
+      }
+      case 'roas': {
+        const sumTotal = data.reduce(
+          (acc, row) => acc + Number(row.total_sales ?? 0),
+          0,
+        )
+        const sumFb = data.reduce(
+          (acc, row) => acc + Number(row.fb_spend ?? 0),
+          0,
+        )
+        if (sumFb > 0) {
+          sums.push(formatRoas(sumTotal / sumFb))
+        } else {
+          sums.push('—')
+        }
+        break
+      }
+      case 'direct_order_count': {
+        const sum = data.reduce(
+          (acc, row) => acc + Number(row.direct_order_count ?? 0),
+          0,
+        )
+        sums.push(String(sum))
+        break
+      }
+      default:
+        sums.push('')
+    }
+  }
+
+  return sums
+}
+
 function onSortChange(payload: {
   column: unknown
   prop: string | undefined
@@ -235,6 +307,14 @@ defineExpose({ applySort })
 }
 
 .store-ops-employee-table :deep(.el-table__body td) {
+  border-color: rgb(241 245 249);
+}
+
+.store-ops-employee-table :deep(.el-table__footer-wrapper td) {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgb(15 23 42);
+  background-color: rgb(248 250 252 / 0.95);
   border-color: rgb(241 245 249);
 }
 </style>
