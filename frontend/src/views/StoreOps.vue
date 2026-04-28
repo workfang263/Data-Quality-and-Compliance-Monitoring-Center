@@ -5,6 +5,9 @@
       subtitle="数据来自店匠同步；金额按北京时间业务日汇总。两店数据分开展示。"
     >
       <template #actions>
+        <el-button v-if="canEditConfig" @click="goToConfig">
+          配置中心
+        </el-button>
         <el-button type="primary" :loading="syncing" @click="handleSync">
           <el-icon class="mr-1"><RefreshRight /></el-icon>
           立即同步
@@ -145,12 +148,14 @@ import {
   nextTick,
   shallowRef,
 } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage, ElNotification } from 'element-plus'
 import { RefreshRight, Shop } from '@element-plus/icons-vue'
 import PageShell from '../components/PageShell.vue'
 import PageHeaderBar from '../components/PageHeaderBar.vue'
 import StoreOpsShopEmployeeTable from '../components/StoreOpsShopEmployeeTable.vue'
+import { getCurrentUser } from '../api/auth'
 import {
   fetchStoreOpsReport,
   triggerStoreOpsSync,
@@ -162,6 +167,8 @@ import {
   type StoreOpsSortOrder,
   type StoreOpsSortProp,
 } from '../utils/storeOpsSort'
+
+const router = useRouter()
 
 function apiErrorMessage(e: unknown): string {
   if (axios.isAxiosError(e) && e.response?.data) {
@@ -182,6 +189,7 @@ function apiErrorMessage(e: unknown): string {
 const loading = ref(false)
 const syncing = ref(false)
 const report = ref<StoreOpsReportData | null>(null)
+const canEditConfig = ref(false)
 
 /** 按店记忆排序；loadReport 只替换 report，不清空本对象（规格 §2） */
 const sortStateByShop = ref<
@@ -363,8 +371,23 @@ const handleSync = async () => {
   }
 }
 
+async function loadCurrentUser() {
+  try {
+    const user = await getCurrentUser()
+    canEditConfig.value =
+      user.role === 'admin' || user.can_edit_store_ops_config === true
+  } catch {
+    canEditConfig.value = false
+  }
+}
+
+function goToConfig() {
+  void router.push('/store-ops/edit')
+}
+
 onMounted(() => {
-  loadReport()
+  void loadCurrentUser()
+  void loadReport()
 })
 </script>
 

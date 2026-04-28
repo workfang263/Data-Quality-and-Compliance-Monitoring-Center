@@ -119,6 +119,7 @@ from app.api import (
     auth_api,
     permissions_api,
     store_ops_api,
+    store_ops_config_api,
 )
 
 # 注册看板数据API路由
@@ -141,6 +142,9 @@ app.include_router(permissions_api.router)
 
 # 店铺运营 / 员工归因
 app.include_router(store_ops_api.router)
+
+# 店铺运营子系统配置中心（阶段 B.1：只读 GET）
+app.include_router(store_ops_config_api.router)
 
 
 # 应用启动时的初始化操作

@@ -61,9 +61,9 @@ const metrics = computed(() => {
         props.data.forEach(item => {
           // ⚠️ 修复时区问题：直接提取ISO字符串的日期部分
           const timeHourStr = item.time_hour
-          const dateStr = typeof timeHourStr === 'string' 
-            ? timeHourStr.split('T')[0] 
-            : new Date(timeHourStr).toISOString().split('T')[0]
+          const dateStr: string = typeof timeHourStr === 'string'
+            ? (timeHourStr.split('T')[0] ?? '')
+            : (new Date(timeHourStr).toISOString().split('T')[0] ?? '')
           dateMap.set(dateStr, (dateMap.get(dateStr) || 0) + 1)
         })
         return dateMap.size < props.data.length
@@ -79,7 +79,7 @@ const metrics = computed(() => {
         let dateStr: string
         if (typeof timeHourStr === 'string') {
           // 直接提取日期部分（YYYY-MM-DD），不进行时区转换
-          dateStr = timeHourStr.split('T')[0]
+          dateStr = timeHourStr.split('T')[0] ?? ''
         } else {
           // 如果是Date对象，使用本地时区的日期
           const date = new Date(timeHourStr)

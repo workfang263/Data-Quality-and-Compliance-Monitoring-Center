@@ -420,19 +420,8 @@ const checkUserPermissions = async () => {
       return
     }
     
-    // 普通用户需要检查扩展权限
-    // 从localStorage获取用户信息（包含扩展权限）
-    const userStr = localStorage.getItem('user')
-    if (userStr) {
-      try {
-        const userInfo = JSON.parse(userStr)
-        canEditMappings.value = userInfo.can_edit_mappings === true
-      } catch (e) {
-        canEditMappings.value = false
-      }
-    } else {
-      canEditMappings.value = false
-    }
+    // 普通用户权限以 /auth/me 实时返回为准，避免旧 localStorage 缓存导致误判
+    canEditMappings.value = user.can_edit_mappings === true
   } catch (err) {
     // 获取用户信息失败，默认无权限
     canEditMappings.value = false

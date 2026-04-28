@@ -127,11 +127,15 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         can_view_dashboard = True
         can_edit_mappings = True
         can_view_store_ops = True
+        can_edit_store_ops_config = True
     else:
         extended_permissions = get_db().get_user_extended_permissions(user.get("id"))
         can_view_dashboard = extended_permissions.get("can_view_dashboard", False)
         can_edit_mappings = extended_permissions.get("can_edit_mappings", False)
         can_view_store_ops = extended_permissions.get("can_view_store_ops", False)
+        can_edit_store_ops_config = extended_permissions.get(
+            "can_edit_store_ops_config", False
+        )
     
     return {
         "id": user.get("id"),
@@ -140,6 +144,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         "can_view_dashboard": can_view_dashboard,
         "can_edit_mappings": can_edit_mappings,
         "can_view_store_ops": can_view_store_ops,
+        "can_edit_store_ops_config": can_edit_store_ops_config,
     }
 
 
@@ -193,11 +198,15 @@ async def login(request_data: LoginRequest = Body(...)) -> Dict[str, Any]:
             can_view_dashboard = True
             can_edit_mappings = True
             can_view_store_ops = True
+            can_edit_store_ops_config = True
         else:
             extended_permissions = get_db().get_user_extended_permissions(user.get("id"))
             can_view_dashboard = extended_permissions.get("can_view_dashboard", False)
             can_edit_mappings = extended_permissions.get("can_edit_mappings", False)
             can_view_store_ops = extended_permissions.get("can_view_store_ops", False)
+            can_edit_store_ops_config = extended_permissions.get(
+                "can_edit_store_ops_config", False
+            )
         
         return {
             "code": 200,
@@ -211,6 +220,7 @@ async def login(request_data: LoginRequest = Body(...)) -> Dict[str, Any]:
                     "can_view_dashboard": can_view_dashboard,
                     "can_edit_mappings": can_edit_mappings,
                     "can_view_store_ops": can_view_store_ops,
+                    "can_edit_store_ops_config": can_edit_store_ops_config,
                 }
             }
         }

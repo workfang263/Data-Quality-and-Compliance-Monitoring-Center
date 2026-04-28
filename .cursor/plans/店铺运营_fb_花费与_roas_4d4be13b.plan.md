@@ -82,7 +82,7 @@ flowchart LR
 
   - SQL：`SELECT m.owner, SUM(h.spend) FROM fb_ad_account_spend_hourly h INNER JOIN ad_account_owner_mapping m ON m.ad_account_id = h.ad_account_id WHERE h.ad_account_id IN (...该店允许列表...) AND DATE(h.time_hour) >= %s AND DATE(h.time_hour) <= %s AND m.owner != '无' GROUP BY m.owner`  
   - Python：将 `owner` 经 `STORE_OPS_OWNER_CN_TO_SLUG` 转为 slug；若遇未知 owner 可记 warning 并跳过，避免脏数据进表。
-  - 多日区间与 [`GET /api/store-ops/report`](GET /api/store-ops/report)(GET /api/store-ops/report)(GET /api/store-ops/report)(d:\projects\line chart\backend\app\api\store_ops_api.py) 的 `start_date`/`end_date`（含端点）保持一致。
+  - 多日区间与 [`GET /api/store-ops/report`](GET /api/store-ops/report)(GET /api/store-ops/report)(GET /api/store-ops/report)(GET /api/store-ops/report)(d:\projects\line chart\backend\app\api\store_ops_api.py) 的 `start_date`/`end_date`（含端点）保持一致。
 
 ### 3. 后端：并入报表 payload
 

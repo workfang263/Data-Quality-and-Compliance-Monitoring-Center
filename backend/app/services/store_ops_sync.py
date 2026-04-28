@@ -28,10 +28,7 @@ from app.services.shoplazza_store_ops_client import (
     unwrap_order_detail,
 )
 from app.services.store_ops_attribution import extract_utm, resolve_attribution
-from app.services.store_ops_constants import (
-    STORE_OPS_SHOP_DOMAINS,
-    get_store_ops_token_for_shop,
-)
+from app.services.store_ops_constants import get_store_ops_token_for_shop
 from app.services.store_ops_time import order_to_biz_date
 
 logger = logging.getLogger(__name__)
@@ -67,6 +64,18 @@ def default_sync_biz_dates() -> List[date]:
     return [t - timedelta(days=1), t]
 
 
+def _resolve_sync_shops(db: Database, shop_domains: Optional[List[str]]) -> List[str]:
+    """统一解析同步店铺范围。
+
+    设计要点：
+    - 调用方显式传店铺时，以调用方为准，兼容现有接口
+    - 未显式传店铺时，统一从 DB 白名单读取，和报表范围保持同源
+    """
+    if shop_domains:
+        return list(shop_domains)
+    return db.get_enabled_store_ops_shop_domains()
+
+
 def beijing_day_placed_at_range(d: date) -> tuple[str, str]:
     start = datetime(d.year, d.month, d.day, 0, 0, 0)
     end = datetime(d.year, d.month, d.day, 23, 59, 59)
@@ -84,6 +93,7 @@ def _sync_one_shop(
     dates: List[date],
     sync_run_id: str,
     verify_ssl: bool,
+    employee_slugs: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     单店同步（供线程池调用）。每线程自建 Database / Client，避免连接混用。
@@ -103,9 +113,13 @@ def _sync_one_shop(
         "orders_skipped_not_paid": 0,
         "errors": [],
     }
+    employee_filter = {
+        str(s).strip().lower() for s in (employee_slugs or []) if str(s).strip()
+    }
+
     token = get_store_ops_token_for_shop(shop)
     if not token:
-        msg = f"未配置环境变量 token，跳过店铺: {shop}"
+        msg = f"未配置店铺 token（DB / env），跳过店铺: {shop}"
         logger.error(msg)
         partial["errors"].append(msg)
         logger.info(
@@ -166,6 +180,11 @@ def _sync_one_shop(
                 src if isinstance(src, str) else None,
                 last_u if isinstance(last_u, str) else None,
             )
+
+            if employee_filter and att_type == "employee":
+                norm_slug = (slug or "").strip().lower()
+                if norm_slug not in employee_filter:
+                    continue
 
             # region agent log — 归因与店匠 UTM 报表差异验证（仅异常样本）
             u_f = extract_utm(src if isinstance(src, str) else None)
@@ -235,6 +254,7 @@ def run_store_ops_sync(
     biz_dates: Optional[List[date]] = None,
     shop_domains: Optional[List[str]] = None,
     verify_ssl: bool = True,
+    employee_slugs: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     执行一轮同步：按店、按北京日拉列表，再逐单详情，仅 financial_status=paid 入库。
@@ -243,13 +263,15 @@ def run_store_ops_sync(
     Returns:
         统计摘要 dict，便于日志与接口记录。
     """
+    db = Database()
     dates = biz_dates if biz_dates else default_sync_biz_dates()
-    shops = shop_domains if shop_domains else list(STORE_OPS_SHOP_DOMAINS)
+    shops = _resolve_sync_shops(db, shop_domains)
 
     stats: Dict[str, Any] = {
         "sync_run_id": sync_run_id,
         "shops": shops,
         "biz_dates": [str(d) for d in dates],
+        "employee_slugs": [str(s).strip().lower() for s in (employee_slugs or [])],
         "orders_seen": 0,
         "orders_upserted_paid": 0,
         "orders_skipped_not_paid": 0,
@@ -263,16 +285,22 @@ def run_store_ops_sync(
 
     max_workers = min(len(shops), 8)
     logger.info(
-        "store_ops 并行调度 run=%s workers=%s shops=%s",
+        "store_ops 并行调度 run=%s workers=%s shops=%s employee_filter=%s",
         sync_run_id,
         max_workers,
         shops,
+        stats["employee_slugs"],
     )
     futures_map = {}
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         for shop in shops:
             fut = executor.submit(
-                _sync_one_shop, shop, dates, sync_run_id, verify_ssl
+                _sync_one_shop,
+                shop,
+                dates,
+                sync_run_id,
+                verify_ssl,
+                employee_slugs,
             )
             futures_map[fut] = shop
 

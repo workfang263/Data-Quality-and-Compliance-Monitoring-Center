@@ -66,7 +66,7 @@
         
         <!-- 数据颗粒度 -->
         <el-form-item label="数据颗粒度">
-          <el-radio-group v-model="filters.granularity" @change="handleGranularityChange">
+          <el-radio-group v-model="filters.granularity" @change="(val) => handleGranularityChange(val as 'hour' | 'day')">
             <el-radio-button label="hour">小时</el-radio-button>
             <el-radio-button label="day">天</el-radio-button>
           </el-radio-group>
@@ -166,10 +166,13 @@ const setQuickDate = (type: string) => {
       return
   }
   
-  const formatDate = (date: Date) => {
-    return date.toISOString().split('T')[0]
+  const formatDate = (date: Date): string => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
   }
-  
+
   filters.value.startDate = formatDate(startDate)
   filters.value.endDate = formatDate(endDate)
   dateRange.value = [filters.value.startDate, filters.value.endDate]

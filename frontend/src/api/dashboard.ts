@@ -3,7 +3,6 @@
  * 封装看板相关的API调用
  */
 import request from './request'
-import type { AxiosResponse } from 'axios'
 
 // 看板数据项类型定义
 export interface DashboardDataItem {
