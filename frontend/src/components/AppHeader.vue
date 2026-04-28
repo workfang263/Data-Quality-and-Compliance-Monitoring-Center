@@ -50,7 +50,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { User, CaretBottom, Monitor } from '@element-plus/icons-vue'
-import { logout } from '../api/auth'
+import { logout, getCurrentUser } from '../api/auth'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
@@ -63,6 +63,9 @@ const canEditMappings = ref(false)
 
 // 当前激活的菜单项
 const activeMenu = computed(() => {
+  if (route.path.startsWith('/store-ops')) {
+    return '/store-ops'
+  }
   return route.path
 })
 
@@ -82,20 +85,45 @@ const canMappingsAudit = computed(() => {
 })
 
 // 加载用户信息
-const loadUserInfo = () => {
+const applyUserInfo = (user: {
+  username?: string
+  role?: string
+  can_view_store_ops?: boolean
+  can_edit_mappings?: boolean
+}) => {
+  username.value = user.username || '用户'
+  userRole.value = user.role || 'user'
+  canViewStoreOps.value = user.can_view_store_ops === true
+  canEditMappings.value = user.can_edit_mappings === true
+}
+
+const loadUserInfo = async () => {
+  // 优先以服务端实时用户信息为准，避免展示被旧缓存卡住
+  try {
+    const user = await getCurrentUser()
+    applyUserInfo(user)
+    localStorage.setItem('user', JSON.stringify(user))
+    return
+  } catch (err) {
+    // 忽略并回退到本地缓存
+  }
+
   const userStr = localStorage.getItem('user')
   if (userStr) {
     try {
       const user = JSON.parse(userStr)
-      username.value = user.username || '用户'
-      userRole.value = user.role || 'user'
-      canViewStoreOps.value = user.can_view_store_ops === true
-      canEditMappings.value = user.can_edit_mappings === true
+      applyUserInfo(user)
     } catch (e) {
       username.value = '用户'
       userRole.value = 'user'
+      canViewStoreOps.value = false
       canEditMappings.value = false
     }
+  } else {
+    username.value = '用户'
+    userRole.value = 'user'
+    canViewStoreOps.value = false
+    canEditMappings.value = false
   }
 }
 
@@ -126,7 +154,7 @@ const handleCommand = async (command: string) => {
 }
 
 onMounted(() => {
-  loadUserInfo()
+  void loadUserInfo()
 })
 </script>
 

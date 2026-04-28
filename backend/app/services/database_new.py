@@ -90,6 +90,34 @@ class Database:
         except Exception as e:
             logger.error(f"获取所有店铺列表失败: {e}")
             return []
+
+    def get_store_access_token(self, shop_domain: str) -> str:
+        """按店铺域名读取主系统 access_token。"""
+        normalized_shop = (shop_domain or "").strip()
+        if not normalized_shop:
+            return ""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT access_token
+                        FROM shoplazza_stores
+                        WHERE shop_domain = %s
+                        LIMIT 1
+                        """,
+                        (normalized_shop,),
+                    )
+                    row = cursor.fetchone() or {}
+                    return str(row.get("access_token") or "").strip()
+        except Exception as e:
+            logger.error(
+                "get_store_access_token 失败 shop=%s: %s",
+                normalized_shop,
+                e,
+                exc_info=True,
+            )
+            return ""
     
     def disable_store(self, shop_domain: str, reason: str = None) -> bool:
         """
@@ -2221,7 +2249,8 @@ class Database:
                         SELECT id, username, role, 
                                COALESCE(can_view_dashboard, FALSE) as can_view_dashboard,
                                COALESCE(can_edit_mappings, FALSE) as can_edit_mappings,
-                               COALESCE(can_view_store_ops, FALSE) as can_view_store_ops
+                               COALESCE(can_view_store_ops, FALSE) as can_view_store_ops,
+                               COALESCE(can_edit_store_ops_config, FALSE) as can_edit_store_ops_config
                         FROM users
                         ORDER BY id
                     """
@@ -2239,8 +2268,15 @@ class Database:
             user_id: 用户ID
         
         Returns:
-            扩展权限字典，包含can_view_dashboard和can_edit_mappings
+            扩展权限字典，包含 can_view_dashboard / can_edit_mappings /
+            can_view_store_ops / can_edit_store_ops_config
         """
+        default_perms = {
+            "can_view_dashboard": False,
+            "can_edit_mappings": False,
+            "can_view_store_ops": False,
+            "can_edit_store_ops_config": False,
+        }
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -2248,7 +2284,8 @@ class Database:
                         SELECT 
                             COALESCE(can_view_dashboard, FALSE) as can_view_dashboard,
                             COALESCE(can_edit_mappings, FALSE) as can_edit_mappings,
-                            COALESCE(can_view_store_ops, FALSE) as can_view_store_ops
+                            COALESCE(can_view_store_ops, FALSE) as can_view_store_ops,
+                            COALESCE(can_edit_store_ops_config, FALSE) as can_edit_store_ops_config
                         FROM users
                         WHERE id = %s
                     """
@@ -2259,19 +2296,14 @@ class Database:
                             "can_view_dashboard": bool(result.get("can_view_dashboard", False)),
                             "can_edit_mappings": bool(result.get("can_edit_mappings", False)),
                             "can_view_store_ops": bool(result.get("can_view_store_ops", False)),
+                            "can_edit_store_ops_config": bool(
+                                result.get("can_edit_store_ops_config", False)
+                            ),
                         }
-                    return {
-                        "can_view_dashboard": False,
-                        "can_edit_mappings": False,
-                        "can_view_store_ops": False,
-                    }
+                    return dict(default_perms)
         except Exception as e:
             logger.error(f"获取用户扩展权限失败 (user_id={user_id}): {e}")
-            return {
-                "can_view_dashboard": False,
-                "can_edit_mappings": False,
-                "can_view_store_ops": False,
-            }
+            return dict(default_perms)
     
     def update_user_extended_permissions(
         self,
@@ -2279,6 +2311,7 @@ class Database:
         can_view_dashboard: bool,
         can_edit_mappings: bool,
         can_view_store_ops: bool = False,
+        can_edit_store_ops_config: bool = False,
     ) -> bool:
         """
         更新用户的扩展权限
@@ -2288,6 +2321,7 @@ class Database:
             can_view_dashboard: 是否可以查看看板总数据
             can_edit_mappings: 是否可以编辑映射
             can_view_store_ops: 是否可查看店铺运营/员工归因报表
+            can_edit_store_ops_config: 是否可编辑店铺运营子系统配置
         
         Returns:
             是否成功
@@ -2300,18 +2334,26 @@ class Database:
                         SET can_view_dashboard = %s,
                             can_edit_mappings = %s,
                             can_view_store_ops = %s,
+                            can_edit_store_ops_config = %s,
                             updated_at = CURRENT_TIMESTAMP
                         WHERE id = %s
                     """
                     cursor.execute(
                         sql,
-                        (can_view_dashboard, can_edit_mappings, can_view_store_ops, user_id),
+                        (
+                            can_view_dashboard,
+                            can_edit_mappings,
+                            can_view_store_ops,
+                            can_edit_store_ops_config,
+                            user_id,
+                        ),
                     )
                     conn.commit()
                     logger.info(
                         f"更新用户扩展权限成功 (user_id={user_id}, "
                         f"can_view_dashboard={can_view_dashboard}, can_edit_mappings={can_edit_mappings}, "
-                        f"can_view_store_ops={can_view_store_ops})"
+                        f"can_view_store_ops={can_view_store_ops}, "
+                        f"can_edit_store_ops_config={can_edit_store_ops_config})"
                     )
                     return True
         except Exception as e:
@@ -2388,6 +2430,35 @@ class Database:
             logger.error(f"upsert_store_ops_order_attribution 失败: {e}", exc_info=True)
             return False
 
+    def get_enabled_store_ops_shop_domains(self) -> List[str]:
+        """读取店铺运营已启用的店铺白名单。
+
+        报表入口与同步入口都应复用这里，避免再次出现
+        “配置中心已加店，但 API / 同步仍看旧常量”的口径分叉。
+        """
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT shop_domain
+                        FROM store_ops_shop_whitelist
+                        WHERE is_enabled = 1
+                        ORDER BY shop_domain ASC
+                        """
+                    )
+                    rows = cursor.fetchall() or []
+                    return [
+                        str(row["shop_domain"]).strip()
+                        for row in rows
+                        if row.get("shop_domain")
+                    ]
+        except Exception as e:
+            logger.error(
+                "get_enabled_store_ops_shop_domains 失败: %s", e, exc_info=True
+            )
+            return []
+
     def fetch_store_ops_daily_buckets(
         self,
         shop_domains: List[str],
@@ -2431,60 +2502,73 @@ class Database:
         date_start: date,
         date_end: date,
     ) -> Dict[str, Decimal]:
+        """按店铺在区间内，从 fb_campaign_spend_daily 聚合系列花费并归因到运营 slug。
+
+        B.4 重写口径：
+          - 数据源：`fb_campaign_spend_daily` 按店铺启用的白名单账户过滤
+          - 归因：Python 层 `match_employee_by_campaign(campaign_name, operators)`
+            按 `store_ops_employee_config.sort_order` 子串匹配 `campaign_keyword`
+          - 返回：{slug: Decimal, "_unattributed": Decimal}
+            - 命中的运营合并到对应 slug
+            - 未命中的系列花费累加到特殊 key `_unattributed`
+          - 主系统表（fb_ad_account_spend_hourly / ad_account_owner_mapping）不再参与读取
         """
-        按店铺运营配置的 FB 账户列表，汇总区间内花费（北京时间 DATE(time_hour)），
-        按 employee_slug 返回。owner 为「无」的账户不计入；未知 owner 记 warning 并跳过。
-        """
-        from app.services.store_ops_fb_mapping import (
-            STORE_OPS_FB_ACT_IDS_BY_SHOP,
-            STORE_OPS_OWNER_CN_TO_SLUG,
+        from app.services.store_ops_attribution import (
+            get_active_operators,
+            match_employee_by_campaign,
         )
 
-        act_ids = STORE_OPS_FB_ACT_IDS_BY_SHOP.get(shop_domain.strip())
-        if not act_ids:
+        sd = (shop_domain or "").strip()
+        if not sd:
             return {}
+
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
-                    ph = ",".join(["%s"] * len(act_ids))
-                    sql = f"""
-                        SELECT m.owner, COALESCE(SUM(h.spend), 0) AS sum_spend
-                        FROM fb_ad_account_spend_hourly h
-                        INNER JOIN ad_account_owner_mapping m
-                            ON m.ad_account_id = h.ad_account_id
-                        WHERE h.ad_account_id IN ({ph})
-                          AND DATE(h.time_hour) >= %s AND DATE(h.time_hour) <= %s
-                          AND m.owner != %s
-                        GROUP BY m.owner
+                    sql = """
+                        SELECT c.campaign_id,
+                               c.campaign_name,
+                               COALESCE(SUM(c.spend), 0) AS total_spend
+                        FROM fb_campaign_spend_daily c
+                        INNER JOIN store_ops_shop_ad_whitelist w
+                                ON w.ad_account_id COLLATE utf8mb4_unicode_ci
+                                 = c.ad_account_id COLLATE utf8mb4_unicode_ci
+                               AND w.is_enabled = 1
+                               AND w.shop_domain COLLATE utf8mb4_unicode_ci = %s
+                        WHERE c.stat_date >= %s AND c.stat_date <= %s
+                        GROUP BY c.campaign_id, c.campaign_name
                     """
-                    cursor.execute(
-                        sql,
-                        tuple(act_ids) + (date_start, date_end, "无"),
-                    )
-                    rows = cursor.fetchall()
+                    cursor.execute(sql, (sd, date_start, date_end))
+                    rows = cursor.fetchall() or []
         except Exception as e:
             logger.error(
                 "fetch_store_ops_fb_spend_by_shop_slug 失败 shop=%s: %s",
-                shop_domain,
-                e,
-                exc_info=True,
+                shop_domain, e, exc_info=True,
             )
             return {}
 
+        try:
+            operators = get_active_operators()
+        except Exception as e:
+            logger.warning(
+                "fetch_store_ops_fb_spend_by_shop_slug 无法加载运营配置，按未归属处理 shop=%s: %s",
+                shop_domain, e,
+            )
+            operators = []
+
         out: Dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
         for r in rows:
-            owner = (r.get("owner") or "").strip()
-            slug = STORE_OPS_OWNER_CN_TO_SLUG.get(owner)
-            if not slug:
-                if owner and owner != "无":
-                    logger.warning(
-                        "store_ops FB spend: 未识别的 owner=%s shop=%s",
-                        owner,
-                        shop_domain,
-                    )
-                continue
-            raw = r.get("sum_spend")
-            out[slug] += Decimal(str(raw)) if raw is not None else Decimal("0")
+            camp_name = (r.get("campaign_name") or "").strip()
+            raw_spend = r.get("total_spend")
+            try:
+                spend = Decimal(str(raw_spend)) if raw_spend is not None else Decimal("0")
+            except Exception:
+                spend = Decimal("0")
+            if spend < 0:
+                spend = Decimal("0")
+            slug = match_employee_by_campaign(camp_name, operators=operators) if operators else None
+            key = slug if slug else "_unattributed"
+            out[key] += spend
         return dict(out)
 
     def insert_store_ops_sync_run_running(

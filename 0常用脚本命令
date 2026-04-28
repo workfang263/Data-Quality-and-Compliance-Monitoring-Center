@@ -1,4 +1,0 @@
-校验运营归因数据脚本
-python scripts/validate_store_ops_attribution.py --examples
-默认每类最多 3 条（一共最多 12 条）。若要「每类 2 条」凑成 8 条、或每类 5 条：
-python scripts/validate_store_ops_attribution.py --examples --example-each 2

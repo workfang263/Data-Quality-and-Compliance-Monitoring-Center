@@ -14,6 +14,8 @@ import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 // Tailwind 放在所有全局 CSS 之后，避免被 style.css / Element Plus 覆盖布局与颜色类
 import './tailwind.css'
+// 认证页视觉 Token 与共享样式
+import './styles/auth.css'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs' // 中文语言包
 
 // 创建Vue应用实例

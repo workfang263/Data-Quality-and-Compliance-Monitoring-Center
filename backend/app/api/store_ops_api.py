@@ -29,12 +29,15 @@ from app.api.auth_api import get_current_user, verify_token
 from config_new import store_ops_https_verify
 
 from app.services.database_new import Database
-from app.services.store_ops_constants import STORE_OPS_SHOP_DOMAINS
 from app.services.store_ops_report import (
     build_store_ops_report_payload,
     merge_fb_spend_into_payload,
 )
-from app.services.store_ops_sync import default_sync_biz_dates, run_store_ops_sync
+from app.services.store_ops_sync import (
+    _resolve_sync_shops,
+    default_sync_biz_dates,
+    run_store_ops_sync,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +52,23 @@ def get_db() -> Database:
 def _resolve_sync_scope(
     biz_dates: Optional[List[date]],
     shop_domains: Optional[List[str]],
+    db: Optional[Database] = None,
 ) -> Tuple[List[date], List[str]]:
-    """与 run_store_ops_sync 相同的默认店铺与日期范围（用于落库 running 记录）。"""
+    """与 run_store_ops_sync 共用默认店铺与日期范围（用于落库 running 记录）。"""
     dates = biz_dates if biz_dates else default_sync_biz_dates()
-    shops = shop_domains if shop_domains else list(STORE_OPS_SHOP_DOMAINS)
+    shops = _resolve_sync_shops(db or get_db(), shop_domains)
     return dates, shops
+
+
+def _resolve_report_scope(db: Database, shop_domain: Optional[str]) -> List[str]:
+    """统一从 DB 白名单解析报表店铺范围，避免 API 再维护一份名单。"""
+    enabled_shops = db.get_enabled_store_ops_shop_domains()
+    if shop_domain:
+        normalized_shop = shop_domain.strip()
+        if normalized_shop not in enabled_shops:
+            raise HTTPException(status_code=400, detail="shop_domain 不在启用白名单中")
+        return [normalized_shop]
+    return enabled_shops
 
 
 def _sync_run_row_to_api(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -133,11 +148,15 @@ def require_can_view_store_ops(
 
 
 class StoreOpsSyncRequest(BaseModel):
-    """不传则同步北京「昨日+今日」、两店。"""
+    """不传则同步北京「昨日+今日」、所有启用白名单店铺。"""
 
     biz_dates: Optional[List[date]] = Field(default=None, description="北京日历日列表")
     shop_domains: Optional[List[str]] = Field(
-        default=None, description="店铺域名，默认两店"
+        default=None, description="店铺域名，默认启用白名单店铺"
+    )
+    employee_slugs: Optional[List[str]] = Field(
+        default=None,
+        description="可选：仅同步这些员工的归因订单（按 slug 过滤）",
     )
 
 
@@ -145,6 +164,7 @@ def _run_sync_background(
     sync_run_id: str,
     biz_dates: Optional[List[date]],
     shop_domains: Optional[List[str]],
+    employee_slugs: Optional[List[str]],
     verify_ssl: bool,
 ) -> None:
     """仅执行拉单与落库结果；running 行已在 POST 返回前写入。"""
@@ -154,6 +174,7 @@ def _run_sync_background(
             sync_run_id,
             biz_dates=biz_dates,
             shop_domains=shop_domains,
+            employee_slugs=employee_slugs,
             verify_ssl=verify_ssl,
         )
         if not db.finalize_store_ops_sync_run_from_stats(sync_run_id, stats):
@@ -193,6 +214,7 @@ async def trigger_store_ops_sync(
         sync_run_id,
         body.biz_dates,
         body.shop_domains,
+        body.employee_slugs,
         store_ops_https_verify(),
     )
     return {
@@ -218,14 +240,8 @@ async def get_store_ops_report(
     """阶段二读时聚合：直接销售额、公共池分摊、合计（按方案按日累加）。"""
     if end_date < start_date:
         raise HTTPException(status_code=400, detail="end_date 不能早于 start_date")
-    if shop_domain:
-        if shop_domain not in STORE_OPS_SHOP_DOMAINS:
-            raise HTTPException(status_code=400, detail="shop_domain 不在支持列表中")
-        shops = [shop_domain]
-    else:
-        shops = list(STORE_OPS_SHOP_DOMAINS)
-
     db = get_db()
+    shops = _resolve_report_scope(db, shop_domain)
     buckets = db.fetch_store_ops_daily_buckets(shops, start_date, end_date)
     payload = build_store_ops_report_payload(shops, start_date, end_date, buckets)
     spend_by_shop_slug: Dict[str, Dict[str, Decimal]] = {}
@@ -243,6 +259,18 @@ async def get_store_ops_sync_run(
     _user: Dict[str, Any] = Depends(require_can_view_store_ops),
 ) -> Dict[str, Any]:
     """查询某次同步批次的明细（含错误列表、按店错误）。"""
+    row = get_db().get_store_ops_sync_run(sync_run_id.strip())
+    if not row:
+        raise HTTPException(status_code=404, detail="未找到该同步批次")
+    return {"code": 200, "message": "success", "data": _sync_run_row_to_api(row)}
+
+
+@router.get("/api/internal/store-ops/sync-run/{sync_run_id}")
+async def get_store_ops_sync_run_internal(
+    sync_run_id: str,
+    _auth: None = Depends(require_internal_key_or_store_ops_user),
+) -> Dict[str, Any]:
+    """内部轮询同步批次状态（支持 X-Internal-Key）。"""
     row = get_db().get_store_ops_sync_run(sync_run_id.strip())
     if not row:
         raise HTTPException(status_code=404, detail="未找到该同步批次")

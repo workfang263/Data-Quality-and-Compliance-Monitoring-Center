@@ -155,6 +155,7 @@ const chartOption = computed(() => {
   const addCompareSeries = (metricKey: string, metricName: string, getValue: (item: DashboardDataItem) => number, compareIndex: number) => {
     if (selectedMetrics.value.includes(metricKey)) {
       const compareTimeMap = compareTimeMaps[compareIndex]
+      if (!compareTimeMap) return
       series.push({
         name: `${metricName}(对比${compareIndex + 1})`,
         type: 'line',
@@ -196,7 +197,7 @@ const chartOption = computed(() => {
 
   // 对比时间段
   if (props.compareData && props.compareData.length > 0) {
-    props.compareData.forEach((compareData, index) => {
+    props.compareData.forEach((_compareData, index) => {
       addCompareSeries('gmv', '销售额', item => item.total_gmv, index)
       addCompareSeries('orders', '订单数', item => item.total_orders, index)
       addCompareSeries('visitors', '访客数', item => item.total_visitors, index)
@@ -225,6 +226,7 @@ const chartOption = computed(() => {
         }
         
         const timestamp = sortedTimestamps[dataIndex]
+        if (!timestamp) return `<div><strong>${timeValue}</strong></div>`
         const mainItem = mainTimeMap.get(timestamp)
         
         if (!mainItem) return `<div><strong>${timeValue}</strong></div>`

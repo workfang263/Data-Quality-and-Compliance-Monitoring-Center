@@ -3,7 +3,24 @@
  * 统一管理API请求，添加拦截器，统一错误处理
  */
 import axios from 'axios'
-import type { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
+import type {
+  AxiosError,
+  AxiosInstance,
+  AxiosRequestConfig,
+  AxiosResponse,
+  InternalAxiosRequestConfig,
+} from 'axios'
+
+type TypedRequest = Omit<
+  AxiosInstance,
+  'get' | 'post' | 'put' | 'patch' | 'delete'
+> & {
+  get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T>
+  post<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+  put<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+  patch<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+  delete<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T>
+}
 
 // 创建axios实例
 const request: AxiosInstance = axios.create({
@@ -93,6 +110,6 @@ request.interceptors.response.use(
   }
 )
 
-// 导出axios实例
-export default request
+// 运行时响应拦截器已经把 AxiosResponse 收敛为 res.data，这里同步收窄 TS 类型。
+export default request as TypedRequest
 

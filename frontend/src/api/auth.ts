@@ -14,6 +14,7 @@ export interface UserInfo {
   can_view_dashboard?: boolean
   can_edit_mappings?: boolean
   can_view_store_ops?: boolean
+  can_edit_store_ops_config?: boolean
 }
 
 /**

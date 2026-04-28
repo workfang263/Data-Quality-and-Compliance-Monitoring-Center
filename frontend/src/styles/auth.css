@@ -1,0 +1,97 @@
+:root {
+  --auth-page-bg: #f8fafc;
+  --auth-brand-bg-start: #10172f;
+  --auth-brand-bg-end: #1e1b4b;
+  --auth-brand-overlay-start: rgba(37, 99, 235, 0.34);
+  --auth-brand-overlay-end: rgba(126, 34, 206, 0.38);
+  --auth-brand-subtitle-color: rgba(226, 232, 240, 0.9);
+  --auth-form-bg: #f8fafc;
+
+  --auth-primary: #3b82f6;
+  --auth-primary-hover: #2563eb;
+  --auth-register-primary: #7c3aed;
+  --auth-register-primary-hover: #6d28d9;
+
+  --auth-radius-lg: 12px;
+  --auth-shadow-soft: 0 12px 36px rgba(15, 23, 42, 0.12);
+  --auth-shadow-primary: 0 12px 24px rgba(59, 130, 246, 0.26);
+}
+
+.auth-page-shell {
+  background: var(--auth-page-bg);
+}
+
+.auth-brand-panel {
+  background: linear-gradient(145deg, var(--auth-brand-bg-start) 0%, var(--auth-brand-bg-end) 100%);
+}
+
+.auth-brand-overlay {
+  background:
+    radial-gradient(circle at 20% 90%, rgba(15, 23, 42, 0.62) 0%, rgba(15, 23, 42, 0) 55%),
+    linear-gradient(160deg, var(--auth-brand-overlay-start) 5%, var(--auth-brand-overlay-end) 78%);
+  opacity: 0.85;
+}
+
+.auth-brand-icon-box {
+  box-shadow: var(--auth-shadow-soft);
+}
+
+.auth-brand-subtitle {
+  color: var(--auth-brand-subtitle-color);
+  line-height: 1.7;
+}
+
+.auth-form-panel {
+  background: var(--auth-form-bg);
+}
+
+.auth-form-stack .el-form-item {
+  margin-bottom: 1rem;
+}
+
+.auth-form .el-form-item__label {
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.auth-form .el-input__wrapper {
+  border-radius: var(--auth-radius-lg);
+  border: 1px solid #e2e8f0;
+  box-shadow: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.auth-form .el-input__wrapper:hover {
+  border-color: #cbd5e1;
+}
+
+.auth-form .el-input__wrapper.is-focus {
+  border-color: var(--auth-primary);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.16);
+}
+
+.auth-submit-btn {
+  width: 100%;
+  height: 48px;
+  border: none;
+  border-radius: var(--auth-radius-lg);
+  background: var(--auth-primary);
+  font-size: 1rem;
+  font-weight: 700;
+  box-shadow: var(--auth-shadow-primary);
+  transition: background-color 0.2s ease, transform 0.12s ease;
+}
+
+.auth-submit-btn:hover {
+  background: var(--auth-primary-hover);
+}
+
+.auth-submit-btn:active {
+  transform: translateY(1px);
+}
+
+.auth-submit-btn.is-disabled,
+.auth-submit-btn.is-loading {
+  box-shadow: none;
+}

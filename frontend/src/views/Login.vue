@@ -1,81 +1,100 @@
 <template>
-  <div class="login-page">
-    <div class="login-container">
-      <h2>登录</h2>
-      
-      <el-form :model="loginForm" :rules="rules" ref="loginFormRef" label-width="0">
-        <el-form-item prop="username">
-          <el-input
-            v-model="loginForm.username"
-            placeholder="请输入用户名"
-            size="large"
-            prefix-icon="User"
-            @keyup.enter="handleLogin"
-          />
-        </el-form-item>
-        
-        <el-form-item prop="password">
-          <el-input
-            v-model="loginForm.password"
-            type="password"
-            placeholder="请输入密码"
-            size="large"
-            prefix-icon="Lock"
-            show-password
-            @keyup.enter="handleLogin"
-          />
-        </el-form-item>
-        
-        <el-form-item>
-          <el-checkbox v-model="loginForm.rememberMe">记住我（7天内免登录）</el-checkbox>
-        </el-form-item>
-        
-        <el-form-item>
-          <el-button
-            type="primary"
-            size="large"
-            :loading="loading"
-            @click="handleLogin"
-            style="width: 100%"
-          >
-            登录
-          </el-button>
-        </el-form-item>
-      </el-form>
-      
-      <div class="register-link">
-        <el-link type="primary" @click="goToRegister">还没有账号？去注册</el-link>
+  <AuthSplitLayout
+    title="欢迎回来"
+    subtitle="请输入您的详细信息以登录账户。"
+    brand-title="内部数据分析系统"
+    brand-subtitle=""
+  >
+    <template #brand-icon>
+      <div class="auth-brand-icon-box flex h-16 w-16 -rotate-6 items-center justify-center rounded-2xl bg-white shadow-2xl">
+        <el-icon class="text-3xl text-blue-600">
+          <ShoppingBag />
+        </el-icon>
       </div>
-      
-      <div v-if="error" class="error-message">
-        <el-alert type="error" :closable="false" show-icon>
-          {{ error }}
-        </el-alert>
+    </template>
+
+    <el-form
+      ref="loginFormRef"
+      :model="loginForm"
+      :rules="rules"
+      label-position="top"
+      class="auth-form auth-form-stack"
+      size="large"
+    >
+      <el-form-item label="用户名" prop="username">
+        <el-input
+          v-model="loginForm.username"
+          :prefix-icon="User"
+          @keyup.enter="handleLogin"
+        />
+      </el-form-item>
+
+      <el-form-item label="密码" prop="password">
+        <el-input
+          v-model="loginForm.password"
+          type="password"
+          :prefix-icon="Lock"
+          show-password
+          @keyup.enter="handleLogin"
+        />
+      </el-form-item>
+
+      <div class="mb-4 flex items-center justify-between">
+        <el-checkbox v-model="loginForm.rememberMe">记住我（7天内免登录）</el-checkbox>
       </div>
+
+      <el-button
+        type="primary"
+        class="auth-submit-btn"
+        :loading="loading"
+        @click="handleLogin"
+      >
+        登录
+      </el-button>
+    </el-form>
+
+    <div v-if="error" class="mt-4">
+      <el-alert :title="error" type="error" :closable="false" show-icon />
     </div>
-  </div>
+
+    <div class="mt-6 text-center">
+      <p class="text-sm text-slate-500">
+        还没有账号？
+        <router-link to="/register" class="font-semibold text-blue-600 transition-colors hover:text-blue-500">
+          去注册
+        </router-link>
+      </p>
+    </div>
+  </AuthSplitLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage, ElForm } from 'element-plus'
-import { User, Lock } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import type { FormInstance, FormRules } from 'element-plus'
+import { Lock, ShoppingBag, User } from '@element-plus/icons-vue'
+import { isAxiosError } from 'axios'
+import AuthSplitLayout from '../components/auth/AuthSplitLayout.vue'
 import { login, type LoginParams } from '../api/auth'
 
 const router = useRouter()
 const route = useRoute()
-const loginFormRef = ref<InstanceType<typeof ElForm>>()
+const loginFormRef = ref<FormInstance>()
 
-// 登录表单
-const loginForm = ref({
+interface LoginFormModel {
+  username: string
+  password: string
+  rememberMe: boolean
+}
+
+const loginForm = reactive<LoginFormModel>({
   username: '',
   password: '',
   rememberMe: false
 })
 
-// 表单验证规则
-const rules = {
+const rules: FormRules<LoginFormModel> = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' }
   ],
@@ -84,53 +103,68 @@ const rules = {
   ]
 }
 
-// 状态
 const loading = ref(false)
 const error = ref('')
 
-// 处理登录
+/**
+ * 统一提取后端错误文案：
+ * 1) 优先读 FastAPI detail
+ * 2) 其次读 message
+ * 3) 最后兜底通用错误，避免页面出现 undefined
+ */
+const getErrorMessage = (err: unknown): string => {
+  if (!isAxiosError(err)) {
+    return '登录失败，请检查用户名和密码'
+  }
+
+  const detail = err.response?.data?.detail
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail
+  }
+
+  const message = err.response?.data?.message
+  if (typeof message === 'string' && message.trim()) {
+    return message
+  }
+
+  return err.message || '登录失败，请检查用户名和密码'
+}
+
 const handleLogin = async () => {
   if (!loginFormRef.value) return
-  
-  // 表单验证
-  await loginFormRef.value.validate((valid) => {
-    if (!valid) return
-  })
-  
+
+  // 先验表单再发请求，避免无效请求打到后端
+  const valid = await loginFormRef.value.validate().catch(() => false)
+  if (!valid) return
+
   loading.value = true
   error.value = ''
-  
+
   try {
     const params: LoginParams = {
-      username: loginForm.value.username,
-      password: loginForm.value.password,
-      remember_me: loginForm.value.rememberMe
+      username: loginForm.username,
+      password: loginForm.password,
+      remember_me: loginForm.rememberMe
     }
-    
+
     const result = await login(params)
-    
-    // 保存token和用户信息
+
+    // 与后端契约保持一致：token 位于 data.token（拦截器已解包 data）
     localStorage.setItem('token', result.token)
     localStorage.setItem('user', JSON.stringify(result.user))
-    
+
     ElMessage.success('登录成功')
-    
-    // 跳转到原页面或默认页面
+
+    // 保留原有 redirect 体验：未登录访问受限页，登录后可回跳
     const redirect = (route.query.redirect as string) || '/dashboard'
     router.push(redirect)
-  } catch (err: any) {
-    error.value = err.message || '登录失败，请检查用户名和密码'
+  } catch (err: unknown) {
+    error.value = getErrorMessage(err)
   } finally {
     loading.value = false
   }
 }
 
-// 跳转到注册页面
-const goToRegister = () => {
-  router.push('/register')
-}
-
-// 如果已登录，自动跳转
 onMounted(() => {
   const token = localStorage.getItem('token')
   if (token) {
@@ -139,38 +173,3 @@ onMounted(() => {
   }
 })
 </script>
-
-<style scoped>
-.login-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.login-container {
-  width: 400px;
-  padding: 40px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-}
-
-.login-container h2 {
-  text-align: center;
-  margin-bottom: 30px;
-  font-size: 24px;
-  font-weight: 600;
-  color: #333;
-}
-
-.register-link {
-  text-align: center;
-  margin-top: 20px;
-}
-
-.error-message {
-  margin-top: 20px;
-}
-</style>

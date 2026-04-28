@@ -115,6 +115,14 @@ const emit = defineEmits<{
   'change': [value: { enabled: boolean; ranges: CompareRange[] }]
 }>()
 
+// 将 Date 转为 YYYY-MM-DD（保证返回 string，避免 split 结果为 undefined 的类型问题）
+const toDateStr = (d: Date): string => {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 // 启用状态
 const enabled = ref(props.modelValue.enabled)
 
@@ -124,13 +132,8 @@ const compareRanges = ref<CompareRange[]>(props.modelValue.ranges.map(r => ({
   dateRange: r.startDate && r.endDate ? [r.startDate, r.endDate] : null
 })))
 
-// 初始化对比段
-if (compareRanges.value.length === 0 && enabled.value) {
-  addCompareRange()
-}
-
 // 启用状态变化
-const handleEnabledChange = (value: boolean) => {
+const handleEnabledChange = (value: string | number | boolean) => {
   if (!value) {
     compareRanges.value = []
   } else if (compareRanges.value.length === 0) {
@@ -140,14 +143,11 @@ const handleEnabledChange = (value: boolean) => {
 }
 
 // 添加对比段
-const addCompareRange = () => {
+function addCompareRange() {
   if (compareRanges.value.length >= 4) return
-  
-  const today = new Date()
-  const yesterday = new Date(today)
+  const yesterday = new Date()
   yesterday.setDate(yesterday.getDate() - 1)
-  const yesterdayStr = yesterday.toISOString().split('T')[0]
-  
+  const yesterdayStr = toDateStr(yesterday)
   compareRanges.value.push({
     startDate: yesterdayStr,
     endDate: yesterdayStr,
@@ -155,6 +155,11 @@ const addCompareRange = () => {
     dateRange: [yesterdayStr, yesterdayStr]
   })
   emitChange()
+}
+
+// 初始化对比段
+if (compareRanges.value.length === 0 && enabled.value) {
+  addCompareRange()
 }
 
 // 删除对比段
@@ -171,19 +176,15 @@ const clearCompareRanges = () => {
 
 // 快捷对比
 const setQuickCompare = (type: string) => {
-  const today = new Date()
-  const yesterday = new Date(today)
+  const yesterday = new Date()
   yesterday.setDate(yesterday.getDate() - 1)
-  
+
   compareRanges.value = []
-  
+
   if (type === 'yesterday_vs_daybefore') {
-    // 昨天 vs 前天
     const dayBeforeYesterday = new Date(yesterday)
     dayBeforeYesterday.setDate(dayBeforeYesterday.getDate() - 1)
-    const dayBeforeYesterdayStr = dayBeforeYesterday.toISOString().split('T')[0]
-    const yesterdayStr = yesterday.toISOString().split('T')[0]
-    
+    const dayBeforeYesterdayStr = toDateStr(dayBeforeYesterday)
     compareRanges.value.push({
       startDate: dayBeforeYesterdayStr,
       endDate: dayBeforeYesterdayStr,
@@ -191,43 +192,37 @@ const setQuickCompare = (type: string) => {
       dateRange: [dayBeforeYesterdayStr, dayBeforeYesterdayStr]
     })
   } else if (type === 'lastweek_vs_thisweek') {
-    // 上周 vs 本周
-    const todayWeekday = yesterday.getDay() === 0 ? 7 : yesterday.getDay() // 转换为周一到周日：1-7
+    const todayWeekday = yesterday.getDay() === 0 ? 7 : yesterday.getDay()
     const thisWeekMonday = new Date(yesterday)
     thisWeekMonday.setDate(yesterday.getDate() - (todayWeekday - 1))
     const lastWeekMonday = new Date(thisWeekMonday)
     lastWeekMonday.setDate(lastWeekMonday.getDate() - 7)
     const lastWeekSunday = new Date(thisWeekMonday)
     lastWeekSunday.setDate(lastWeekSunday.getDate() - 1)
-    
+    const startStr = toDateStr(lastWeekMonday)
+    const endStr = toDateStr(lastWeekSunday)
     compareRanges.value.push({
-      startDate: lastWeekMonday.toISOString().split('T')[0],
-      endDate: lastWeekSunday.toISOString().split('T')[0],
+      startDate: startStr,
+      endDate: endStr,
       timeRange: 'all',
-      dateRange: [
-        lastWeekMonday.toISOString().split('T')[0],
-        lastWeekSunday.toISOString().split('T')[0]
-      ]
+      dateRange: [startStr, endStr]
     })
   } else if (type === 'lastmonth_vs_thismonth') {
-    // 上月 vs 本月
     const thisMonthFirst = new Date(yesterday.getFullYear(), yesterday.getMonth(), 1)
     const lastMonthFirst = new Date(thisMonthFirst)
     lastMonthFirst.setMonth(lastMonthFirst.getMonth() - 1)
     const lastMonthLast = new Date(thisMonthFirst)
     lastMonthLast.setDate(lastMonthLast.getDate() - 1)
-    
+    const startStr = toDateStr(lastMonthFirst)
+    const endStr = toDateStr(lastMonthLast)
     compareRanges.value.push({
-      startDate: lastMonthFirst.toISOString().split('T')[0],
-      endDate: lastMonthLast.toISOString().split('T')[0],
+      startDate: startStr,
+      endDate: endStr,
       timeRange: 'all',
-      dateRange: [
-        lastMonthFirst.toISOString().split('T')[0],
-        lastMonthLast.toISOString().split('T')[0]
-      ]
+      dateRange: [startStr, endStr]
     })
   }
-  
+
   enabled.value = true
   emitChange()
 }
@@ -235,14 +230,13 @@ const setQuickCompare = (type: string) => {
 // 对比段变化
 const handleCompareRangeChange = (index: number) => {
   const range = compareRanges.value[index]
-  
-  // 更新日期范围
+  if (!range) return
+
   if (range.dateRange && range.dateRange.length === 2) {
     range.startDate = range.dateRange[0]
     range.endDate = range.dateRange[1]
   }
-  
-  // 更新时段
+
   switch (range.timeRange) {
     case 'all':
       range.startHour = undefined
@@ -265,20 +259,21 @@ const handleCompareRangeChange = (index: number) => {
       if (range.endHour === undefined) range.endHour = 23
       break
   }
-  
+
   emitChange()
 }
 
 // 发送变化事件
 const emitChange = () => {
-  const ranges = compareRanges.value.map(r => ({
+  const ranges: CompareRange[] = compareRanges.value.map(r => ({
     startDate: r.startDate,
     endDate: r.endDate,
     timeRange: r.timeRange,
     startHour: r.startHour,
-    endHour: r.endHour
+    endHour: r.endHour,
+    dateRange: r.dateRange
   }))
-  
+
   emit('update:modelValue', { enabled: enabled.value, ranges })
   emit('change', { enabled: enabled.value, ranges })
 }

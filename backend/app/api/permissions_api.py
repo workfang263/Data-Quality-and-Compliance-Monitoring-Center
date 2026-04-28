@@ -52,6 +52,7 @@ class UpdatePermissionsRequest(BaseModel):
     can_view_dashboard: bool = False  # 是否可以查看看板总数据
     can_edit_mappings: bool = False  # 是否可以编辑映射
     can_view_store_ops: bool = False  # 是否可查看店铺运营/员工归因
+    can_edit_store_ops_config: bool = False  # 是否可编辑店铺运营子系统配置（新）
 
 
 @router.get("/api/permissions/users")
@@ -212,6 +213,7 @@ async def update_user_permissions(
             request_data.can_view_dashboard,
             request_data.can_edit_mappings,
             request_data.can_view_store_ops,
+            request_data.can_edit_store_ops_config,
         )
         if not success:
             raise HTTPException(

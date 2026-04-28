@@ -14,6 +14,7 @@ export interface PermissionUser {
   can_view_dashboard?: boolean
   can_edit_mappings?: boolean
   can_view_store_ops?: boolean
+  can_edit_store_ops_config?: boolean
 }
 
 /**
@@ -23,6 +24,7 @@ export interface ExtendedPermissions {
   can_view_dashboard: boolean
   can_edit_mappings: boolean
   can_view_store_ops: boolean
+  can_edit_store_ops_config: boolean
 }
 
 /**
@@ -61,6 +63,7 @@ export interface UpdatePermissionsParams {
   can_view_dashboard?: boolean
   can_edit_mappings?: boolean
   can_view_store_ops?: boolean
+  can_edit_store_ops_config?: boolean
 }
 
 export function updateUserPermissions(

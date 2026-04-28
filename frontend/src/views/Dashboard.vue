@@ -97,14 +97,13 @@ const canViewDashboard = ref(false)
 
 // 筛选条件
 const today = new Date()
-const todayStr = today.toISOString().split('T')[0]
+const todayStr: string = today.toISOString().split('T')[0] ?? ''
 
 const filters = ref<FiltersType>({
   startDate: todayStr,
   endDate: todayStr,
   granularity: 'hour',
-  timeRange: 'all',
-  shopDomain: 'ALL_STORES'
+  timeRange: 'all'
 })
 
 // 计算属性：是否查询总数据
