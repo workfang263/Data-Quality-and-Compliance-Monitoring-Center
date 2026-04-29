@@ -46,8 +46,9 @@
 
         <!-- 日内时段 -->
         <el-form-item label="日内时段" v-if="filters.granularity === 'hour'">
-          <div class="dual-range">
-            <div class="range-group">
+          <div class="hour-controls">
+            <div class="hour-row">
+              <div class="range-label">主时段</div>
               <el-select v-model="timeRangeActive" @change="handleTimeRangeQuick" style="width: 180px">
                 <el-option label="全天（不过滤）" value="all" />
                 <el-option label="上午 (00:00-11:00)" value="morning" />
@@ -63,24 +64,67 @@
                   :precision="0"
                   controls-position="right"
                   style="width: 100px"
-                  @change="onHourChange"
+                  @change="onMainHourChange"
                 />
                 <span style="margin: 0 8px; color: #909399;">时 至</span>
                 <el-input-number
                   v-model="filters.endHour"
                   :min="0"
-                  :max="23"
+                  :max="maxMainEndHour"
                   :precision="0"
                   controls-position="right"
                   style="width: 100px"
-                  @change="onHourChange"
+                  @change="onMainHourChange"
                 />
                 <span style="margin-left: 4px; color: #909399;">时</span>
               </template>
             </div>
-            <span class="vs-separator" v-if="filters.enableComparison" style="visibility: hidden;">VS</span>
-            <div class="range-group" v-if="filters.enableComparison">
-              <span style="color: #909399; font-size: 12px;">（同上）</span>
+
+            <div v-if="filters.enableComparison" class="hour-symmetry-toggle">
+              <el-switch
+                v-model="filters.hourSymmetric"
+                size="small"
+                active-text="对称"
+                inactive-text="不对称"
+                @change="onHourSymmetricChange"
+              />
+            </div>
+
+            <div v-if="filters.enableComparison && !filters.hourSymmetric" class="hour-row">
+              <div class="range-label">对比时段</div>
+              <el-select v-model="cmpTimeRangeActive" @change="handleCmpTimeRangeQuick" style="width: 180px">
+                <el-option label="全天（不过滤）" value="all" />
+                <el-option label="上午 (00:00-11:00)" value="morning" />
+                <el-option label="下午 (12:00-17:00)" value="afternoon" />
+                <el-option label="晚上 (18:00-23:00)" value="evening" />
+                <el-option label="自定义" value="custom" />
+              </el-select>
+              <template v-if="cmpTimeRangeActive !== 'all'">
+                <el-input-number
+                  v-model="filters.cmpStartHour"
+                  :min="0"
+                  :max="23"
+                  :precision="0"
+                  controls-position="right"
+                  style="width: 100px"
+                  @change="onCmpHourChange"
+                />
+                <span style="margin: 0 8px; color: #909399;">时 至</span>
+                <el-input-number
+                  v-model="filters.cmpEndHour"
+                  :min="0"
+                  :max="maxCmpEndHour"
+                  :precision="0"
+                  controls-position="right"
+                  style="width: 100px"
+                  @change="onCmpHourChange"
+                />
+                <span style="margin-left: 4px; color: #909399;">时</span>
+              </template>
+            </div>
+
+            <div v-if="filters.enableComparison && filters.hourSymmetric" class="hour-row" style="color: #909399; font-size: 12px; padding-left: 56px;">
+              <span>对比时段与主时段相同</span>
             </div>
           </div>
         </el-form-item>
@@ -120,6 +164,9 @@ export interface DashboardFilters {
   granularity: 'hour' | 'day'
   startHour?: number
   endHour?: number
+  cmpStartHour?: number
+  cmpEndHour?: number
+  hourSymmetric: boolean
   enableComparison: boolean
 }
 
@@ -149,6 +196,7 @@ const quickActive = ref<string>('')
 
 // 日内时段快捷选择（UI 控件，不存到 filter model）
 const timeRangeActive = ref<string>('custom')
+const cmpTimeRangeActive = ref<string>('custom')
 
 const toDateStr = (d: Date): string => {
   const y = d.getFullYear()
@@ -156,6 +204,24 @@ const toDateStr = (d: Date): string => {
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
+
+const todayDateStr = computed(() => toDateStr(new Date()))
+const ceiledHour = computed(() => {
+  const now = new Date()
+  const h = now.getHours()
+  const m = now.getMinutes()
+  return m > 0 ? Math.min(h + 1, 23) : h
+})
+
+const maxMainEndHour = computed(() => {
+  if (filters.value.endDate === todayDateStr.value) return ceiledHour.value
+  return 23
+})
+
+const maxCmpEndHour = computed(() => {
+  if (filters.value.cmpEndDate === todayDateStr.value) return ceiledHour.value
+  return 23
+})
 
 // 监听props变化
 watch(() => props.modelValue, (newVal) => {
@@ -167,6 +233,9 @@ watch(() => props.modelValue, (newVal) => {
     cmpDateRange.value = [newVal.cmpStartDate, newVal.cmpEndDate]
   } else {
     cmpDateRange.value = null
+  }
+  if (newVal.hourSymmetric === undefined) {
+    filters.value.hourSymmetric = true
   }
 }, { deep: true })
 
@@ -193,10 +262,63 @@ const handleCmpDateChange = (value: [string, string] | null) => {
   emitChange()
 }
 
-// 小时变化
-const onHourChange = () => {
+// 主时段小时变化（对称时自动同步到对比时段）
+const onMainHourChange = () => {
   quickActive.value = ''
   timeRangeActive.value = 'custom'
+  if (filters.value.endDate === todayDateStr.value && (filters.value.endHour == null)) {
+    filters.value.endHour = ceiledHour.value
+  }
+  if (filters.value.hourSymmetric) {
+    filters.value.cmpStartHour = filters.value.startHour
+    filters.value.cmpEndHour = filters.value.endHour
+  }
+  emitChange()
+}
+
+// 对比时段小时变化（不对称模式下）
+const onCmpHourChange = () => {
+  quickActive.value = ''
+  cmpTimeRangeActive.value = 'custom'
+  if (filters.value.cmpEndDate === todayDateStr.value && (filters.value.cmpEndHour == null)) {
+    filters.value.cmpEndHour = ceiledHour.value
+  }
+  emitChange()
+}
+
+// 对比时段快捷选择
+const handleCmpTimeRangeQuick = (value: string) => {
+  switch (value) {
+    case 'all':
+      filters.value.cmpStartHour = undefined
+      filters.value.cmpEndHour = undefined
+      break
+    case 'morning':
+      filters.value.cmpStartHour = 0
+      filters.value.cmpEndHour = 11
+      break
+    case 'afternoon':
+      filters.value.cmpStartHour = 12
+      filters.value.cmpEndHour = 17
+      break
+    case 'evening':
+      filters.value.cmpStartHour = 18
+      filters.value.cmpEndHour = 23
+      break
+    case 'custom':
+      if (filters.value.cmpStartHour === undefined) filters.value.cmpStartHour = 0
+      if (filters.value.cmpEndHour === undefined) filters.value.cmpEndHour = 23
+      break
+  }
+  emitChange()
+}
+
+// 对称切换：开启对称时把对比时段小时同步为主时段
+const onHourSymmetricChange = () => {
+  if (filters.value.hourSymmetric) {
+    filters.value.cmpStartHour = filters.value.startHour
+    filters.value.cmpEndHour = filters.value.endHour
+  }
   emitChange()
 }
 
@@ -277,7 +399,20 @@ const setQuick = (type: string) => {
   cmpDateRange.value = [filters.value.cmpStartDate!, filters.value.cmpEndDate!]
   quickActive.value = type
 
-  // Auto-enable comparison on quick select
+  // 今天 vs 昨天：自动将 endHour 封顶到当前小时（向下取整）
+  if (type === 'today') {
+    const now = new Date()
+    const ch = now.getMinutes() > 0 ? Math.min(now.getHours() + 1, 23) : now.getHours()
+    if (filters.value.granularity === 'hour') {
+      filters.value.startHour = 0
+      filters.value.endHour = ch
+      filters.value.cmpStartHour = 0
+      filters.value.cmpEndHour = ch
+      timeRangeActive.value = 'custom'
+      cmpTimeRangeActive.value = 'custom'
+    }
+  }
+
   if (!filters.value.enableComparison) {
     filters.value.enableComparison = true
   }
@@ -352,6 +487,24 @@ const emitChange = () => {
   color: var(--el-text-color-secondary);
   white-space: nowrap;
   width: 56px;
+}
+
+.hour-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hour-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hour-symmetry-toggle {
+  display: flex;
+  align-items: center;
+  padding-left: 56px;
 }
 
 .vs-separator {

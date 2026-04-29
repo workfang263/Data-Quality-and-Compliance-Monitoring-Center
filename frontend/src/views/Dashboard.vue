@@ -4,7 +4,7 @@
     <div class="dashboard-inner w-full">
     <DashboardFilters v-model="filters" @change="handleFiltersChange" />
     
-    <el-skeleton v-if="loading" :rows="5" animated />
+    <el-skeleton v-if="isInitialLoad" :rows="5" animated />
     
     <el-alert v-if="error" type="error" :closable="false" show-icon style="margin-bottom: 20px">
       {{ error }}
@@ -20,7 +20,7 @@
       您没有权限查看看板总数据，请联系管理员授权
     </el-alert>
     
-    <div v-if="!loading && !error">
+    <div v-loading="!isInitialLoad && loading">
       <DashboardSummary 
         v-if="data.length > 0 && (canViewDashboard || !isAllStores)" 
         :data="data" 
@@ -77,6 +77,7 @@ import PageShell from '../components/PageShell.vue'
 import PageHeaderBar from '../components/PageHeaderBar.vue'
 
 const loading = ref(false)
+const isInitialLoad = ref(true)
 const error = ref('')
 const data = ref<DashboardDataItem[]>([])
 const compareData = ref<DashboardDataItem[][]>([])
@@ -102,7 +103,10 @@ const filters = ref<FiltersType>({
   cmpEndDate: yesterdayStr,
   granularity: 'hour',
   startHour: 0,
-  endHour: 10,
+  endHour: 11,
+  cmpStartHour: 0,
+  cmpEndHour: 11,
+  hourSymmetric: true,
   enableComparison: true
 })
 
@@ -153,17 +157,22 @@ const fetchDashboardData = async () => {
     }
     data.value = await getDashboardData(params)
 
-    // 对比数据：使用 filters 中显式设置的对比日期
+    // 对比数据：对称模式用主时段小时，不对称模式用独立对比小时
     if (f.enableComparison && f.cmpStartDate && f.cmpEndDate) {
       const cmpParams: any = { shop_domain: 'ALL_STORES', start_date: f.cmpStartDate, end_date: f.cmpEndDate, granularity: f.granularity }
-      if (f.granularity !== 'day' && f.startHour !== undefined && f.endHour !== undefined) {
-        cmpParams.start_hour = f.startHour; cmpParams.end_hour = f.endHour
+      if (f.granularity !== 'day') {
+        const sh = f.hourSymmetric ? f.startHour : f.cmpStartHour
+        const eh = f.hourSymmetric ? f.endHour : f.cmpEndHour
+        if (sh !== undefined && eh !== undefined) {
+          cmpParams.start_hour = sh; cmpParams.end_hour = eh
+        }
       }
       const cmp = await getDashboardData(cmpParams)
       compareData.value = cmp.length > 0 ? [cmp] : []
     } else {
       compareData.value = []
     }
+    isInitialLoad.value = false
   } catch (err: any) {
     console.error('获取看板数据失败:', err)
     error.value = err.message || '获取数据失败'
