@@ -140,6 +140,7 @@ CREATE TABLE `shoplazza_stores` (
   `shop_domain` varchar(255) NOT NULL COMMENT '店铺域名（例如：shop1.myshoplaza.com）',
   `access_token` text NOT NULL COMMENT '店铺API访问令牌',
   `is_active` tinyint(1) DEFAULT '1' COMMENT '是否启用（TRUE=启用，FALSE=禁用）',
+  `display_name` varchar(255) DEFAULT NULL COMMENT '店铺具体名称（可为空，用于运营页面展示）',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -153,6 +154,7 @@ CREATE TABLE `store_owner_mapping` (
   `id` int NOT NULL AUTO_INCREMENT,
   `shop_domain` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `owner` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `display_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '店铺显示名称',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -293,6 +295,89 @@ CREATE TABLE `store_ops_sync_runs` (
   UNIQUE KEY `uk_sync_run_id` (`sync_run_id`),
   KEY `idx_started_at` (`started_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='店铺运营-同步批次结果';
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `store_ops_shop_whitelist` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `shop_domain` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '店铺域名',
+  `is_enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否启用（1=启用，0=停用）',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `shop_domain` (`shop_domain`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='店铺运营-店铺白名单';
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `store_ops_shop_ad_whitelist` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `shop_domain` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '绑定店铺域名',
+  `ad_account_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Facebook广告账户ID',
+  `is_enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否启用（1=启用，0=停用）',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `ad_account_id` (`ad_account_id`),
+  KEY `idx_shop_domain` (`shop_domain`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='店铺运营-广告账户白名单';
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `store_ops_employee_config` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `employee_slug` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '员工标识（小写字母开头，仅含 a-z0-9_）',
+  `display_name` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '显示名称',
+  `utm_keyword` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'UTM关键词（用于归因匹配）',
+  `campaign_keyword` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '广告系列关键词',
+  `status` enum('active','blocked') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'active' COMMENT '状态（active=活跃，blocked=封禁）',
+  `sort_order` int NOT NULL DEFAULT '100' COMMENT '排序权重',
+  `deleted_at` timestamp NULL DEFAULT NULL COMMENT '软删除时间',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `employee_slug` (`employee_slug`),
+  UNIQUE KEY `utm_keyword` (`utm_keyword`),
+  UNIQUE KEY `campaign_keyword` (`campaign_keyword`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='店铺运营-员工配置表';
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `store_ops_config_audit` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `resource_type` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '资源类型：shop / ad_whitelist / operator',
+  `resource_key` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '资源标识键',
+  `action` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '动作：create/update/delete/enable/disable/block/unblock',
+  `actor_user_id` int DEFAULT NULL COMMENT '操作人用户ID',
+  `actor_username` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '操作人用户名',
+  `request_payload` json DEFAULT NULL COMMENT '请求体（含 before/after/changes）',
+  `result_status` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '结果状态',
+  `result_message` text COLLATE utf8mb4_unicode_ci COMMENT '结果信息',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_resource_type` (`resource_type`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='店铺运营-配置操作审计表';
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `mapping_resource_audit` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `action` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '动作：create / update',
+  `resource_type` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '资源类型：store / facebook / tiktok',
+  `resource_id` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '资源标识（shop_domain 或 ad_account_id）',
+  `owner` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '负责人名称',
+  `operator_user_id` int DEFAULT NULL COMMENT '操作人用户ID',
+  `operator_username` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '操作人用户名',
+  `request_payload` json DEFAULT NULL COMMENT '请求体（已脱敏，不含 token）',
+  `result_status` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT 'success' COMMENT '结果状态：success / warning / error',
+  `result_message` text COLLATE utf8mb4_unicode_ci COMMENT '结果信息',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_resource_type` (`resource_type`),
+  KEY `idx_action` (`action`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='映射编辑操作审计表（映射操作记录页数据源）';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 

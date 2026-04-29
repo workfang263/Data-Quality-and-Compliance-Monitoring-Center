@@ -33,6 +33,7 @@ logs/.login_token_*
 *.sql
 !/db/schema.sql
 !/db/seeds.sql
+!/db/migration_*.sql
 
 # 临时文件与进程锁
 *.tmp

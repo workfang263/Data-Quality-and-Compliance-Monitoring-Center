@@ -208,7 +208,7 @@ class Database:
                     # 如果有日内时段筛选
                     if start_hour is not None and end_hour is not None:
                         conditions.append("HOUR(time_hour) >= %s")
-                        conditions.append("HOUR(time_hour) < %s")
+                        conditions.append("HOUR(time_hour) <= %s")
                         params.extend([start_hour, end_hour])
                     
                     sql = f"""
@@ -250,10 +250,10 @@ class Database:
 
                     if start_hour is not None and end_hour is not None:
                         conditions_sales.append("HOUR(time_hour) >= %s")
-                        conditions_sales.append("HOUR(time_hour) < %s")
+                        conditions_sales.append("HOUR(time_hour) <= %s")
                         params_sales.extend([start_hour, end_hour])
                         conditions_spend.append("HOUR(time_hour) >= %s")
-                        conditions_spend.append("HOUR(time_hour) < %s")
+                        conditions_spend.append("HOUR(time_hour) <= %s")
                         params_spend.extend([start_hour, end_hour])
 
                     # 小时聚合后再合并
@@ -368,7 +368,7 @@ class Database:
                     
                     if start_hour is not None and end_hour is not None:
                         conditions.append("HOUR(time_hour) >= %s")
-                        conditions.append("HOUR(time_hour) < %s")
+                        conditions.append("HOUR(time_hour) <= %s")
                         params.extend([start_hour, end_hour])
                     
                     sql = f"""
@@ -393,7 +393,8 @@ class Database:
     def get_daily_data_with_spend(self, start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
         """
         获取按天聚合的数据（销售+花费），用于总店铺视图。
-        数据来源：owner_daily_summary（按天、按负责人聚合的日汇总）。
+        主数据来源：owner_daily_summary（按天、按负责人聚合的日汇总）。
+        回退方案：当 owner_daily_summary 为空时，直接从 hourly 表实时聚合。
         返回 total_spend 为总广告花费（Facebook + TikTok）
         ⚠️ 完全对齐旧系统逻辑，不加映射表过滤
         """
@@ -413,14 +414,13 @@ class Database:
                         GROUP BY date
                         ORDER BY date ASC
                     """
+                    result = None
                     try:
                         cursor.execute(sql_with_tt, (start_time, end_time))
-                        return cursor.fetchall()
+                        result = cursor.fetchall()
                     except Exception as sql_error:
-                        # 如果SQL执行失败，检查是否是字段不存在的问题
                         error_msg = str(sql_error).lower()
                         if 'tt_total_spend' in error_msg or 'unknown column' in error_msg:
-                            # 字段不存在，使用简化SQL（不包含 tt_total_spend）
                             logger.warning(f"表缺少 tt_total_spend 字段，使用简化SQL: {sql_error}")
                             sql_without_tt = """
                                 SELECT 
@@ -435,13 +435,59 @@ class Database:
                                 ORDER BY date ASC
                             """
                             cursor.execute(sql_without_tt, (start_time, end_time))
-                            return cursor.fetchall()
+                            result = cursor.fetchall()
                         else:
-                            # 其他错误，重新抛出
                             raise
+
+                    # 如果 owner_daily_summary 返回了数据，直接使用
+                    if result and len(result) > 0:
+                        return result
+
+                    # 回退方案：直接从 hourly 表实时聚合（当天数据可能尚未写入 owner_daily_summary）
+                    logger.info(f"owner_daily_summary 无数据，回退到 hourly 表实时聚合: {start_time} ~ {end_time}")
+                    fallback_sql = """
+                        SELECT 
+                            DATE(t.time_hour) as date,
+                            SUM(t.total_gmv)      AS total_gmv,
+                            SUM(t.total_orders)   AS total_orders,
+                            MAX(t.total_visitors) AS total_visitors,
+                            SUM(t.total_spend)    AS total_spend
+                        FROM (
+                            SELECT time_hour,
+                                   SUM(total_gmv) AS total_gmv,
+                                   SUM(total_orders) AS total_orders,
+                                   MAX(total_visitors) AS total_visitors,
+                                   0 AS total_spend
+                            FROM shoplazza_overview_hourly
+                            WHERE time_hour >= %s AND time_hour <= %s
+                            GROUP BY time_hour
+                            UNION ALL
+                            SELECT time_hour,
+                                   0, 0, 0,
+                                   SUM(spend) AS total_spend
+                            FROM fb_ad_account_spend_hourly
+                            WHERE time_hour >= %s AND time_hour <= %s
+                            GROUP BY time_hour
+                            UNION ALL
+                            SELECT time_hour,
+                                   0, 0, 0,
+                                   SUM(spend) AS total_spend
+                            FROM tt_ad_account_spend_hourly
+                            WHERE time_hour >= %s AND time_hour <= %s
+                            GROUP BY time_hour
+                        ) t
+                        GROUP BY DATE(t.time_hour)
+                        ORDER BY date ASC
+                    """
+                    fallback_params = [
+                        start_time, end_time,  # sales
+                        start_time, end_time,  # fb spend
+                        start_time, end_time   # tt spend
+                    ]
+                    cursor.execute(fallback_sql, fallback_params)
+                    return cursor.fetchall()
         except Exception as e:
             logger.error(f"获取带花费的天数据失败: {e}", exc_info=True)
-            # 与旧系统保持一致：返回空数组而不是抛出异常
             return []
     
     def get_hourly_data_with_spend_filtered(
@@ -502,13 +548,13 @@ class Database:
                     
                     if start_hour is not None and end_hour is not None:
                         conditions_sales.append("HOUR(s.time_hour) >= %s")
-                        conditions_sales.append("HOUR(s.time_hour) < %s")
+                        conditions_sales.append("HOUR(s.time_hour) <= %s")
                         params_sales.extend([start_hour, end_hour])
                         conditions_spend_fb.append("HOUR(f.time_hour) >= %s")
-                        conditions_spend_fb.append("HOUR(f.time_hour) < %s")
+                        conditions_spend_fb.append("HOUR(f.time_hour) <= %s")
                         params_spend_fb.extend([start_hour, end_hour])
                         conditions_spend_tt.append("HOUR(t.time_hour) >= %s")
-                        conditions_spend_tt.append("HOUR(t.time_hour) < %s")
+                        conditions_spend_tt.append("HOUR(t.time_hour) <= %s")
                         params_spend_tt.extend([start_hour, end_hour])
                     
                     # ⭐ 步骤1：查询销售数据（包含 owner, shop_domain, time_hour）
@@ -656,25 +702,23 @@ class Database:
     ) -> List[Dict[str, Any]]:
         """
         获取天粒度数据（按授权负责人过滤）
-        
+
         Args:
             start_time: 开始时间
             end_time: 结束时间
             allowed_owners: 授权负责人列表
-        
+
         Returns:
             天粒度数据列表（被授权负责人的聚合数据）
         """
         if not allowed_owners:
             return []
-        
+
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
-                    # 构建参数占位符
                     placeholders = ','.join(['%s'] * len(allowed_owners))
-                    
-                    # 先尝试使用包含 tt_total_spend 的完整SQL
+
                     sql_with_tt = f"""
                         SELECT 
                             date,
@@ -689,17 +733,14 @@ class Database:
                         GROUP BY date
                         ORDER BY date ASC
                     """
+                    result = None
                     try:
                         params = [start_time, end_time] + allowed_owners
                         cursor.execute(sql_with_tt, params)
                         result = cursor.fetchall()
-                        logger.debug(f"获取过滤后的天数据成功，返回 {len(result)} 条记录（授权负责人：{allowed_owners}）")
-                        return result
                     except Exception as sql_error:
-                        # 如果SQL执行失败，检查是否是字段不存在的问题
                         error_msg = str(sql_error).lower()
                         if 'tt_total_spend' in error_msg or 'unknown column' in error_msg:
-                            # 字段不存在，使用简化SQL（不包含 tt_total_spend）
                             logger.warning(f"表缺少 tt_total_spend 字段，使用简化SQL: {sql_error}")
                             sql_without_tt = f"""
                                 SELECT 
@@ -718,11 +759,61 @@ class Database:
                             params = [start_time, end_time] + allowed_owners
                             cursor.execute(sql_without_tt, params)
                             result = cursor.fetchall()
-                            logger.debug(f"获取过滤后的天数据成功（简化SQL），返回 {len(result)} 条记录（授权负责人：{allowed_owners}）")
-                            return result
                         else:
-                            # 其他错误，重新抛出
                             raise
+
+                    if result and len(result) > 0:
+                        logger.debug(f"获取过滤后的天数据成功，返回 {len(result)} 条记录（授权负责人：{allowed_owners}）")
+                        return result
+
+                    # 回退方案：直接从 hourly 表实时聚合
+                    logger.info(f"owner_daily_summary 无过滤后的数据，回退到 hourly 表实时聚合: {start_time} ~ {end_time}, owners={allowed_owners}")
+                    fallback_sql = f"""
+                        SELECT 
+                            DATE(t.time_hour) as date,
+                            SUM(t.total_gmv)      AS total_gmv,
+                            SUM(t.total_orders)   AS total_orders,
+                            MAX(t.total_visitors) AS total_visitors,
+                            SUM(t.total_spend)    AS total_spend
+                        FROM (
+                            SELECT s.time_hour,
+                                   SUM(s.total_gmv) AS total_gmv,
+                                   SUM(s.total_orders) AS total_orders,
+                                   MAX(s.total_visitors) AS total_visitors,
+                                   0 AS total_spend
+                            FROM shoplazza_store_hourly s
+                            WHERE s.time_hour >= %s AND s.time_hour <= %s
+                              AND s.owner IN ({placeholders})
+                            GROUP BY s.time_hour
+                            UNION ALL
+                            SELECT f.time_hour,
+                                   0, 0, 0,
+                                   SUM(f.spend) AS total_spend
+                            FROM fb_ad_account_spend_hourly f
+                            WHERE f.time_hour >= %s AND f.time_hour <= %s
+                              AND f.owner IN ({placeholders})
+                            GROUP BY f.time_hour
+                            UNION ALL
+                            SELECT tt.time_hour,
+                                   0, 0, 0,
+                                   SUM(tt.spend) AS total_spend
+                            FROM tt_ad_account_spend_hourly tt
+                            WHERE tt.time_hour >= %s AND tt.time_hour <= %s
+                              AND tt.owner IN ({placeholders})
+                            GROUP BY tt.time_hour
+                        ) t
+                        GROUP BY DATE(t.time_hour)
+                        ORDER BY date ASC
+                    """
+                    fallback_params = [
+                        start_time, end_time, *allowed_owners,  # sales
+                        start_time, end_time, *allowed_owners,  # fb spend
+                        start_time, end_time, *allowed_owners   # tt spend
+                    ]
+                    cursor.execute(fallback_sql, fallback_params)
+                    result = cursor.fetchall()
+                    logger.debug(f"回退聚合成功，返回 {len(result)} 条记录")
+                    return result
         except Exception as e:
             logger.error(f"获取过滤后的天数据失败: {e}", exc_info=True)
             logger.error(f"授权负责人列表: {allowed_owners}")
@@ -1486,7 +1577,7 @@ class Database:
                     # 如果有日内时段筛选
                     if start_hour is not None and end_hour is not None:
                         conditions.append("HOUR(time_hour) >= %s")
-                        conditions.append("HOUR(time_hour) < %s")
+                        conditions.append("HOUR(time_hour) <= %s")
                         params.extend([start_hour, end_hour])
                     
                     sql = f"""
@@ -1525,7 +1616,7 @@ class Database:
                     
                     if start_hour is not None and end_hour is not None:
                         conditions.append("HOUR(time_hour) >= %s")
-                        conditions.append("HOUR(time_hour) < %s")
+                        conditions.append("HOUR(time_hour) <= %s")
                         params.extend([start_hour, end_hour])
                     
                     sql = f"""
@@ -1715,14 +1806,18 @@ class Database:
             return []
     
     def get_store_owner_mappings(self) -> List[Dict[str, Any]]:
-        """获取所有店铺-负责人映射"""
+        """获取所有店铺-负责人映射（含店铺启用状态和显示名称）"""
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
                     sql = """
-                        SELECT id, shop_domain, owner, created_at, updated_at
-                        FROM store_owner_mapping
-                        ORDER BY shop_domain
+                        SELECT m.id, m.shop_domain, m.owner,
+                               COALESCE(m.display_name, s.display_name) AS display_name,
+                               m.created_at, m.updated_at,
+                               COALESCE(s.is_active, 1) AS is_active
+                        FROM store_owner_mapping m
+                        LEFT JOIN shoplazza_stores s ON s.shop_domain = m.shop_domain
+                        ORDER BY m.shop_domain
                     """
                     cursor.execute(sql)
                     mappings = cursor.fetchall()
@@ -1768,6 +1863,35 @@ class Database:
             logger.error(f"获取TikTok广告账户映射失败: {e}")
             return []
 
+    def get_store_display_names(self, shop_domains: List[str]) -> Dict[str, Optional[str]]:
+        """
+        批量获取店铺显示名称
+        优先使用 store_owner_mapping.display_name，其次使用 shoplazza_stores.display_name
+        返回 {shop_domain: display_name or None}
+        """
+        if not shop_domains:
+            return {}
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    placeholders = ','.join(['%s'] * len(shop_domains))
+                    # 优先取 store_owner_mapping.display_name，其次取 shoplazza_stores.display_name
+                    sql = f"""
+                        SELECT m.shop_domain,
+                               COALESCE(m.display_name, s.display_name) AS display_name
+                        FROM store_owner_mapping m
+                        LEFT JOIN shoplazza_stores s ON s.shop_domain = m.shop_domain
+                        WHERE m.shop_domain IN ({placeholders})
+                    """
+                    cursor.execute(sql, shop_domains)
+                    result = {}
+                    for row in cursor.fetchall():
+                        result[row['shop_domain']] = row.get('display_name') or None
+                    return result
+        except Exception as e:
+            logger.error(f"获取店铺显示名称失败: {e}")
+            return {}
+
     def suggest_mapping_owners(self, query: str = "", limit: int = 40) -> List[str]:
         """
         店铺 / FB / TT 三表合并去重后的负责人名称，供新增映射联想。
@@ -1803,46 +1927,90 @@ class Database:
             logger.error(f"suggest_mapping_owners 失败: {e}")
             return []
 
+    def check_display_name_unique(self, shop_domain: str, display_name: Optional[str]) -> Optional[str]:
+        """
+        检查 display_name 是否被其他店铺占用。
+        空值/None 不检查（允许多个店铺为空）。
+        返回占用该名称的 shop_domain，未被占用返回 None。
+        """
+        name = (display_name or '').strip()
+        if not name:
+            return None
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # 检查 store_owner_mapping 中是否有其他店铺使用相同 display_name
+                    cursor.execute(
+                        "SELECT shop_domain FROM store_owner_mapping WHERE display_name = %s AND shop_domain != %s LIMIT 1",
+                        (name, shop_domain),
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        return row['shop_domain']
+                    # 也检查 shoplazza_stores
+                    cursor.execute(
+                        "SELECT shop_domain FROM shoplazza_stores WHERE display_name = %s AND shop_domain != %s LIMIT 1",
+                        (name, shop_domain),
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        return row['shop_domain']
+                    return None
+        except Exception as e:
+            logger.error(f"检查 display_name 唯一性失败: {e}")
+            return None
+
     def create_or_update_store_mapping(
         self,
         shop_domain: str,
         owner: str,
         access_token: str,
         is_active: bool = True,
+        display_name: Optional[str] = None,
     ) -> bool:
         """
         创建或更新店铺与负责人映射。
         同一事务内写入：
         1) shoplazza_stores（店铺凭证）
-        2) store_owner_mapping（店铺负责人）
+        2) store_owner_mapping（店铺负责人 + 显示名称）
         """
+        # 检查 display_name 唯一性（非空时不可与其他店铺重复）
+        conflict = self.check_display_name_unique(shop_domain, display_name)
+        if conflict:
+            logger.warning(f"display_name '{display_name}' 已被店铺 {conflict} 占用")
+            raise ValueError(f"店铺名称「{display_name}」已被 {conflict} 使用，请换一个名称")
+        
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO shoplazza_stores (shop_domain, access_token, is_active, updated_at)
-                        VALUES (%s, %s, %s, NOW())
+                        INSERT INTO shoplazza_stores (shop_domain, access_token, is_active, display_name, updated_at)
+                        VALUES (%s, %s, %s, %s, NOW())
                         ON DUPLICATE KEY UPDATE
                           access_token = VALUES(access_token),
                           is_active = VALUES(is_active),
+                          display_name = VALUES(display_name),
                           updated_at = NOW()
                         """,
-                        (shop_domain, access_token, bool(is_active)),
+                        (shop_domain, access_token, bool(is_active), display_name),
                     )
                     cursor.execute(
                         """
-                        INSERT INTO store_owner_mapping (shop_domain, owner, updated_at)
-                        VALUES (%s, %s, NOW())
+                        INSERT INTO store_owner_mapping (shop_domain, owner, display_name, updated_at)
+                        VALUES (%s, %s, %s, NOW())
                         ON DUPLICATE KEY UPDATE
                           owner = VALUES(owner),
+                          display_name = VALUES(display_name),
                           updated_at = NOW()
                         """,
-                        (shop_domain, owner),
+                        (shop_domain, owner, display_name),
                     )
                     conn.commit()
                     logger.info("创建/更新店铺映射成功: %s -> %s", shop_domain, owner)
                     return True
+        except ValueError:
+            raise
         except Exception as e:
             logger.error("创建/更新店铺映射失败: %s", e)
             return False
@@ -1891,24 +2059,31 @@ class Database:
             logger.error("创建/更新 TikTok 映射失败: %s", e)
             return False
     
-    def update_store_owner_mapping(self, shop_domain: str, owner: str) -> Optional[List[date]]:
+    def update_store_owner_mapping(self, shop_domain: str, owner: str, display_name: Optional[str] = None) -> Optional[List[date]]:
         """
         更新店铺-负责人映射（如果不存在则插入）
         同时更新历史数据表中的 owner 字段
         返回受影响的日期列表（用于重新聚合）
         """
+        # 检查 display_name 唯一性（非空时不可与其他店铺重复）
+        conflict = self.check_display_name_unique(shop_domain, display_name)
+        if conflict:
+            logger.warning(f"display_name '{display_name}' 已被店铺 {conflict} 占用")
+            raise ValueError(f"店铺名称「{display_name}」已被 {conflict} 使用，请换一个名称")
+        
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
-                    # 1. 更新映射表
+                    # 1. 更新映射表（display_name 可选）
                     sql = """
-                        INSERT INTO store_owner_mapping (shop_domain, owner, updated_at)
-                        VALUES (%s, %s, NOW())
+                        INSERT INTO store_owner_mapping (shop_domain, owner, display_name, updated_at)
+                        VALUES (%s, %s, %s, NOW())
                         ON DUPLICATE KEY UPDATE
                             owner = VALUES(owner),
+                            display_name = VALUES(display_name),
                             updated_at = NOW()
                     """
-                    cursor.execute(sql, (shop_domain, owner))
+                    cursor.execute(sql, (shop_domain, owner, display_name))
                     
                     # 2. 获取受影响的日期列表（在更新前获取，避免更新后查询不到旧数据）
                     affected_dates_sql = """

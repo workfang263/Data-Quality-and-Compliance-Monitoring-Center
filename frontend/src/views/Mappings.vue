@@ -32,6 +32,7 @@
         @add="openStoreDialog"
         @row-change="onStoreRowChange"
         @save="onSaveStoreRow"
+        @save-name="onSaveStoreName"
       />
       <MappingColumn
         title="Facebook广告账户 → 负责人映射"
@@ -75,6 +76,9 @@
       <el-form label-position="top" class="dialog-form">
         <el-form-item label="店铺域名" required>
           <el-input v-model="storeForm.shop_domain" placeholder="例如 store.example.myshoplazza.com" clearable />
+        </el-form-item>
+        <el-form-item label="显示名称">
+          <el-input v-model="storeForm.display_name" placeholder="例如「旗舰店」，可为空" clearable />
         </el-form-item>
         <el-form-item label="负责人" required>
           <el-autocomplete
@@ -181,6 +185,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import request from '../api/request'
 import {
   getStoreMappings,
   getFacebookMappings,
@@ -199,12 +204,15 @@ import { getCurrentUser } from '../api/auth'
 import PageShell from '../components/PageShell.vue'
 import PageHeaderBar from '../components/PageHeaderBar.vue'
 import MappingColumn, {
-  type MappingColumnRow
+  type MappingColumnRow,
+  type MappingColumnStoreRow
 } from '../components/MappingColumn.vue'
 
 // 扩展映射类型，添加编辑状态
 interface EditableStoreMapping extends StoreMapping {
+  editDisplayName: string
   editOwner: string
+  is_active: boolean
   saving: boolean
 }
 
@@ -237,6 +245,7 @@ const storeDialogSubmitting = ref(false)
 const storeForm = ref({
   shop_domain: '',
   owner: '',
+  display_name: '',
   access_token: '',
   is_active: true
 })
@@ -292,6 +301,7 @@ function resetStoreForm() {
   storeForm.value = {
     shop_domain: '',
     owner: '',
+    display_name: '',
     access_token: '',
     is_active: true
   }
@@ -310,6 +320,7 @@ async function submitStoreForm() {
     await createStoreMapping({
       shop_domain: domain,
       owner,
+      display_name: storeForm.value.display_name.trim() || undefined,
       access_token: token,
       is_active: storeForm.value.is_active
     })
@@ -437,7 +448,9 @@ const loadStoreMappings = async () => {
     const data = await getStoreMappings()
     storeMappings.value = data.map(m => ({
       ...m,
+      editDisplayName: m.display_name || '',
       editOwner: m.owner,
+      is_active: m.is_active !== false,
       saving: false
     }))
   } catch (err: any) {
@@ -516,11 +529,33 @@ function onTikTokRowChange(row: MappingColumnRow) {
 function onSaveStoreRow(row: MappingColumnRow) {
   saveStoreMapping(row as EditableStoreMapping)
 }
+function onSaveStoreName(row: MappingColumnStoreRow) {
+  saveStoreDisplayName(row as EditableStoreMapping)
+}
 function onSaveFacebookRow(row: MappingColumnRow) {
   saveFacebookMapping(row as EditableAdAccountMapping)
 }
 function onSaveTikTokRow(row: MappingColumnRow) {
   saveTikTokMapping(row as EditableAdAccountMapping)
+}
+
+// 保存店铺显示名称（失焦自动保存）
+const saveStoreDisplayName = async (mapping: EditableStoreMapping) => {
+  const newName = mapping.editDisplayName.trim()
+  if (newName === (mapping.display_name || '')) return // 未变化
+  mapping.saving = true
+  try {
+    await request.put(`/mappings/stores/${mapping.id}`, {
+      owner: mapping.owner,
+      display_name: newName || null
+    })
+    mapping.display_name = newName || null
+  } catch (err: any) {
+    ElMessage.error(err.message || '保存名称失败')
+    mapping.editDisplayName = mapping.display_name || ''
+  } finally {
+    mapping.saving = false
+  }
 }
 
 // 保存店铺映射
@@ -533,7 +568,7 @@ const saveStoreMapping = async (mapping: EditableStoreMapping) => {
   mapping.saving = true
   
   try {
-    const result = await updateStoreMapping(mapping.id, mapping.editOwner.trim())
+    const result = await updateStoreMapping(mapping.id, mapping.editOwner.trim(), mapping.display_name)
     mapping.owner = result.owner
     ElMessage.success(`已更新: ${mapping.shop_domain} -> ${result.owner}，重新聚合了 ${result.affected_dates_count} 个日期的数据`)
   } catch (err: any) {

@@ -95,6 +95,11 @@
           </template>
         </el-table-column>
         <el-table-column prop="resource_id" label="资源标识" min-width="160" show-overflow-tooltip />
+        <el-table-column label="店名" width="120" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ extractDisplayName(row) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="owner" label="负责人" width="100" show-overflow-tooltip />
         <el-table-column prop="operator_username" label="操作人" width="100" show-overflow-tooltip />
         <el-table-column prop="result_status" label="状态" width="120">
@@ -178,6 +183,21 @@ function typeLabel(t: string): string {
   if (t === 'facebook') return 'Facebook'
   if (t === 'tiktok') return 'TikTok'
   return t
+}
+
+/** 从 request_payload 中提取 display_name（仅店铺类型有） */
+function extractDisplayName(row: MappingAuditItem): string {
+  if (row.resource_type !== 'store') return '—'
+  if (!row.request_payload) return '—'
+  try {
+    const payload = typeof row.request_payload === 'string'
+      ? JSON.parse(row.request_payload)
+      : row.request_payload
+    const dn = payload?.display_name
+    return dn || '（未设置）'
+  } catch {
+    return '—'
+  }
 }
 
 /** 状态圆点颜色（Tailwind 背景类） */

@@ -81,6 +81,7 @@ async def create_store_mapping(
     owner: str = Body(..., description="负责人", embed=True),
     access_token: str = Body(..., description="店铺 access token", embed=True),
     is_active: bool = Body(True, description="是否启用", embed=True),
+    display_name: Optional[str] = Body(None, description="店铺显示名称（可选）", embed=True),
     current_user: Dict[str, Any] = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """
@@ -100,7 +101,7 @@ async def create_store_mapping(
         if not validate_shoplazza_shop_domain(domain):
             raise HTTPException(status_code=400, detail="shop_domain 格式不合法")
 
-        ok = db.create_or_update_store_mapping(domain, owner_text, token, is_active)
+        ok = db.create_or_update_store_mapping(domain, owner_text, token, is_active, display_name)
         if not ok:
             raise HTTPException(status_code=500, detail="创建店铺映射失败")
 
@@ -115,6 +116,7 @@ async def create_store_mapping(
                 {
                     "shop_domain": domain,
                     "owner": owner_text,
+                    "display_name": display_name,
                     "access_token": token,
                     "is_active": is_active,
                 }
@@ -133,6 +135,8 @@ async def create_store_mapping(
         }
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         logger.error(f"创建店铺映射失败: {e}")
         db.log_mapping_audit(
@@ -146,6 +150,7 @@ async def create_store_mapping(
                 {
                     "shop_domain": shop_domain,
                     "owner": owner,
+                    "display_name": display_name,
                     "access_token": access_token,
                     "is_active": is_active,
                 }
@@ -314,7 +319,7 @@ async def create_tiktok_mapping(
 @router.get("/api/mappings/stores")
 async def get_store_mappings() -> Dict[str, Any]:
     """
-    获取所有店铺-负责人映射列表
+    获取所有店铺-负责人映射列表（含店铺启用状态和显示名称）
     """
     try:
         mappings = db.get_store_owner_mappings()
@@ -326,6 +331,8 @@ async def get_store_mappings() -> Dict[str, Any]:
                 "id": mapping.get("id"),
                 "shop_domain": mapping.get("shop_domain", ""),
                 "owner": mapping.get("owner", ""),
+                "display_name": mapping.get("display_name") or None,
+                "is_active": bool(mapping.get("is_active", 1)),
                 "created_at": mapping.get("created_at").isoformat() if mapping.get("created_at") else None,
                 "updated_at": mapping.get("updated_at").isoformat() if mapping.get("updated_at") else None
             }
@@ -426,6 +433,7 @@ async def get_mapping_owner_suggestions(
 async def update_store_mapping(
     id: int = Path(..., description="映射ID"),
     owner: str = Body(..., description="负责人名称", embed=True),
+    display_name: Optional[str] = Body(None, description="店铺显示名称（可选，传 null 表示清除）", embed=True),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
@@ -463,7 +471,7 @@ async def update_store_mapping(
             raise HTTPException(status_code=400, detail="店铺域名不存在")
         
         # 更新映射
-        affected_dates = db.update_store_owner_mapping(shop_domain, owner)
+        affected_dates = db.update_store_owner_mapping(shop_domain, owner, display_name)
         
         if affected_dates is None:
             raise HTTPException(status_code=500, detail="更新映射失败")
@@ -480,7 +488,7 @@ async def update_store_mapping(
                     owner=owner,
                     operator_user_id=operator_user_id,
                     operator_username=operator_username,
-                    request_payload=_redact_mapping_payload({"id": id, "owner": owner}),
+                    request_payload=_redact_mapping_payload({"id": id, "owner": owner, "display_name": display_name}),
                     result_status="warning",
                     result_message=f"映射更新成功，但重新聚合失败，影响 {len(affected_dates)} 个日期",
                 )
@@ -492,7 +500,7 @@ async def update_store_mapping(
                     owner=owner,
                     operator_user_id=operator_user_id,
                     operator_username=operator_username,
-                    request_payload=_redact_mapping_payload({"id": id, "owner": owner}),
+                    request_payload=_redact_mapping_payload({"id": id, "owner": owner, "display_name": display_name}),
                     result_status="success",
                     result_message=f"更新成功，影响 {len(affected_dates)} 个日期",
                 )
@@ -504,7 +512,7 @@ async def update_store_mapping(
                 owner=owner,
                 operator_user_id=operator_user_id,
                 operator_username=operator_username,
-                request_payload=_redact_mapping_payload({"id": id, "owner": owner}),
+                request_payload=_redact_mapping_payload({"id": id, "owner": owner, "display_name": display_name}),
                 result_status="success",
                 result_message="更新成功，无历史日期受影响",
             )
@@ -521,6 +529,8 @@ async def update_store_mapping(
         }
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         logger.error(f"更新店铺映射失败: {e}")
         db.log_mapping_audit(
@@ -530,7 +540,7 @@ async def update_store_mapping(
             owner=owner,
             operator_user_id=operator_user_id,
             operator_username=operator_username,
-            request_payload=_redact_mapping_payload({"id": id, "owner": owner}),
+            request_payload=_redact_mapping_payload({"id": id, "owner": owner, "display_name": display_name}),
             result_status="error",
             result_message=str(e),
         )
