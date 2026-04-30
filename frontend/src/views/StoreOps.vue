@@ -60,7 +60,7 @@
                     </div>
                     <div class="min-w-0">
                       <h2 class="text-lg font-bold text-slate-800">
-                        店铺 {{ idx + 1 }}
+                        {{ shop.display_name || `店铺 ${idx + 1}` }}
                       </h2>
                       <p
                         class="truncate text-xs font-medium text-slate-500 sm:text-sm"

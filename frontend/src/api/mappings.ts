@@ -11,6 +11,8 @@ export interface StoreMapping {
   id: number
   shop_domain: string
   owner: string
+  display_name: string | null
+  is_active: boolean
   created_at: string | null
   updated_at: string | null
 }
@@ -75,8 +77,8 @@ export function getOwnerSuggestions(q?: string, limit?: number): Promise<string[
 /**
  * 更新店铺映射
  */
-export function updateStoreMapping(id: number, owner: string): Promise<UpdateMappingResponse> {
-  return request.put<UpdateMappingResponse>(`/mappings/stores/${id}`, { owner })
+export function updateStoreMapping(id: number, owner: string, display_name?: string | null): Promise<UpdateMappingResponse> {
+  return request.put<UpdateMappingResponse>(`/mappings/stores/${id}`, { owner, display_name })
 }
 
 /**
@@ -105,6 +107,7 @@ export function createStoreMapping(payload: {
   owner: string
   access_token: string
   is_active: boolean
+  display_name?: string
 }): Promise<CreateStoreMappingResponse> {
   return request.post<CreateStoreMappingResponse>('/mappings/stores', payload)
 }

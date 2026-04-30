@@ -1,15 +1,25 @@
 <template>
   <div class="dashboard-summary">
-    <!--
-      用 CSS Grid 替代 el-row/el-col：
-      1) 大屏固定 7 等分，7 张指标卡刚好铺满，不会在右侧留 1 格空白
-      2) 小屏自动降列，避免卡片过窄
-    -->
     <div class="summary-grid">
       <el-card v-for="metric in metrics" :key="metric.key" shadow="hover" class="summary-card">
         <div class="summary-content">
           <div class="summary-label">{{ metric.label }}</div>
-          <div class="summary-value">{{ metric.value }}</div>
+          <div v-if="!metric.cmpValue" class="summary-main">{{ metric.mainValue }}</div>
+          <template v-else>
+            <div class="summary-cols">
+              <div class="summary-col">
+                <div class="summary-tag">{{ leftLabel }}</div>
+                <div class="summary-main">{{ metric.mainValue }}</div>
+              </div>
+              <div class="summary-col">
+                <div class="summary-tag">{{ rightLabel }}</div>
+                <div class="summary-cmp">{{ metric.cmpValue }}</div>
+              </div>
+            </div>
+          </template>
+          <div v-if="metric.delta !== undefined" class="summary-delta" :class="metric.deltaClass">
+            {{ metric.delta }}
+          </div>
         </div>
       </el-card>
     </div>
@@ -21,204 +31,141 @@ import { computed } from 'vue'
 import { ElCard } from 'element-plus'
 import type { DashboardDataItem } from '../api/dashboard'
 
-// Props
 const props = defineProps<{
   data: DashboardDataItem[]
-  granularity?: 'hour' | 'day' // 数据粒度，用于准确计算访客数
+  granularity?: 'hour' | 'day'
+  compareData?: DashboardDataItem[]
+  compareLabel?: string  // "今天 / 昨天"
 }>()
 
-// 计算汇总指标
+// 拆分 compareLabel 为左右标签
+const leftLabel = computed(() => props.compareLabel?.split(' / ')[0] ?? '当前')
+const rightLabel = computed(() => props.compareLabel?.split(' / ')[1] ?? '对比')
+
+const calcVisitors = (d: DashboardDataItem[]): number => {
+  if (d.length === 0) return 0
+  const isHourly = props.granularity === 'hour' ||
+    (props.granularity === undefined && (() => {
+      const dateMap = new Map<string, number>()
+      d.forEach(item => {
+        const ds: string = typeof item.time_hour === 'string'
+          ? (item.time_hour.split('T')[0] ?? '')
+          : (new Date(item.time_hour).toISOString().split('T')[0] ?? '')
+        dateMap.set(ds, (dateMap.get(ds) || 0) + 1)
+      })
+      return dateMap.size < d.length
+    })())
+  if (isHourly) {
+    const dateMap = new Map<string, number>()
+    d.forEach(item => {
+      const timeHourStr = item.time_hour
+      let ds: string
+      if (typeof timeHourStr === 'string') { ds = timeHourStr.split('T')[0] ?? '' }
+      else {
+        const dt = new Date(timeHourStr)
+        ds = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`
+      }
+      dateMap.set(ds, Math.max(dateMap.get(ds) || 0, item.total_visitors))
+    })
+    return Array.from(dateMap.values()).reduce((s, v) => s + v, 0)
+  }
+  return d.reduce((s, item) => s + item.total_visitors, 0)
+}
+
 const metrics = computed(() => {
+  const emptyMetric = (key: string, label: string, v = '$0.00') => ({ key, label, mainValue: v })
+
   if (!props.data || props.data.length === 0) {
     return [
-      { key: 'gmv', label: '总销售额', value: '0.00' },
-      { key: 'orders', label: '总订单数', value: '0' },
-      { key: 'visitors', label: '总访客数', value: '0' },
-      { key: 'spend', label: '总广告花费', value: '0.00' },
-      { key: 'aov', label: '平均客单价', value: '0.00' },
-      { key: 'roas', label: '总ROAS', value: '0.00' },
-      { key: 'conversion', label: '转化率', value: '0.00%' }
+      emptyMetric('gmv', '总销售额'), emptyMetric('orders', '总订单数', '0单'),
+      emptyMetric('visitors', '总访客数', '0人'), emptyMetric('spend', '总广告花费'),
+      emptyMetric('aov', '平均客单价'), emptyMetric('roas', '总ROAS', '0.00'),
+      emptyMetric('conversion', '转化率', '0.00%')
     ]
   }
 
-  // 计算总销售额
-  const totalGmv = props.data.reduce((sum, item) => sum + item.total_gmv, 0)
-  
-  // 计算总订单数
-  const totalOrders = props.data.reduce((sum, item) => sum + item.total_orders, 0)
-  
-  // 计算总访客数
-  // ⚠️ 访客数是累计值，同一天内不同小时是递增的（00:00 ≤ 01:00 ≤ ... ≤ 23:00）
-  // - 小时粒度：按天分组取最大值（即当天的总访客数），然后累加所有天的最大值（不同天的访客是不同的，应该累加）
-  // - 天粒度：直接累加（每天的数据已经是当天的总访客数）
-  let totalVisitors = 0
-  if (props.data.length > 0) {
-    // 判断数据粒度：优先使用传入的 granularity，否则通过数据特征判断
-    const isHourlyData = props.granularity === 'hour' || 
-      (props.granularity === undefined && (() => {
-        // 通过数据特征判断：如果同一天有多条记录，说明是小时粒度
-        const dateMap = new Map<string, number>()
-        props.data.forEach(item => {
-          // ⚠️ 修复时区问题：直接提取ISO字符串的日期部分
-          const timeHourStr = item.time_hour
-          const dateStr: string = typeof timeHourStr === 'string'
-            ? (timeHourStr.split('T')[0] ?? '')
-            : (new Date(timeHourStr).toISOString().split('T')[0] ?? '')
-          dateMap.set(dateStr, (dateMap.get(dateStr) || 0) + 1)
-        })
-        return dateMap.size < props.data.length
-      })())
-    
-    if (isHourlyData) {
-      // 小时粒度：按天分组取最大值（同一天内，最大值就是23:00的累计值，即当天的总访客数）
-      const dateMap = new Map<string, number>()
-      props.data.forEach(item => {
-        // ⚠️ 修复时区问题：直接解析ISO字符串的日期部分，避免时区转换
-        // time_hour 格式：2025-12-18T07:00:00，直接提取日期部分
-        const timeHourStr = item.time_hour
-        let dateStr: string
-        if (typeof timeHourStr === 'string') {
-          // 直接提取日期部分（YYYY-MM-DD），不进行时区转换
-          dateStr = timeHourStr.split('T')[0] ?? ''
-        } else {
-          // 如果是Date对象，使用本地时区的日期
-          const date = new Date(timeHourStr)
-          dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-        }
-        const currentMax = dateMap.get(dateStr) || 0
-        dateMap.set(dateStr, Math.max(currentMax, item.total_visitors))
-      })
-      // 累加所有天的最大值（不同天的访客是不同的，应该累加）
-      const dailyMaxValues = Array.from(dateMap.entries())
-      // 调试信息：打印每天的最大值
-      console.log('访客数计算 - 按天分组后的最大值：', dailyMaxValues.map(([date, max]) => ({ date, max })))
-      totalVisitors = dailyMaxValues.reduce((sum, [, val]) => sum + val, 0)
-      console.log('访客数计算 - 总访客数：', totalVisitors)
-    } else {
-      // 天粒度：直接累加（每天的数据已经是当天的总访客数）
-      totalVisitors = props.data.reduce((sum, item) => sum + item.total_visitors, 0)
-    }
-  }
-  
-  // 计算总广告花费
-  const totalSpend = props.data.reduce((sum, item) => sum + item.total_spend, 0)
-  
-  // 计算平均客单价（总销售额 / 总订单数）
+  const totalGmv = props.data.reduce((s, item) => s + item.total_gmv, 0)
+  const totalOrders = props.data.reduce((s, item) => s + item.total_orders, 0)
+  const totalVisitors = calcVisitors(props.data)
+  const totalSpend = props.data.reduce((s, item) => s + item.total_spend, 0)
   const avgOrderValue = totalOrders > 0 ? totalGmv / totalOrders : 0
-  
-  // 计算总ROAS（总销售额 / 总广告花费）
   const roas = totalSpend > 0 ? totalGmv / totalSpend : 0
-  
-  // 计算转化率（总订单数 / 总访客数 * 100）
-  const conversionRate = totalVisitors > 0 ? (totalOrders / totalVisitors) * 100 : 0
+  const convRate = totalVisitors > 0 ? (totalOrders / totalVisitors) * 100 : 0
+
+  const hasCompare = props.compareData && props.compareData.length > 0
+  let cmpGmv = 0, cmpOrders = 0, cmpVisitors = 0, cmpSpend = 0, cmpAov = 0, cmpRoas = 0, cmpConv = 0
+  if (hasCompare) {
+    cmpGmv = props.compareData!.reduce((s, item) => s + item.total_gmv, 0)
+    cmpOrders = props.compareData!.reduce((s, item) => s + item.total_orders, 0)
+    cmpVisitors = calcVisitors(props.compareData!)
+    cmpSpend = props.compareData!.reduce((s, item) => s + item.total_spend, 0)
+    cmpAov = cmpOrders > 0 ? cmpGmv / cmpOrders : 0
+    cmpRoas = cmpSpend > 0 ? cmpGmv / cmpSpend : 0
+    cmpConv = cmpVisitors > 0 ? (cmpOrders / cmpVisitors) * 100 : 0
+  }
+
+  const deltaText = (cur: number, prev: number, isOrder: boolean): { text: string; cls: string } | undefined => {
+    if (!hasCompare || prev === 0 && cur === 0) return undefined
+    if (isOrder) {
+      const diff = cur - prev
+      if (diff > 0) return { text: `+${diff}单`, cls: 'up' }
+      if (diff < 0) return { text: `${diff}单`, cls: 'down' }
+      return { text: '持平', cls: 'flat' }
+    }
+    if (prev === 0) return cur > 0 ? { text: '新增', cls: 'up' } : { text: '—', cls: 'flat' }
+    const pct = ((cur - prev) / prev) * 100
+    if (pct > 0) return { text: `+${pct.toFixed(1)}%`, cls: 'up' }
+    if (pct < 0) return { text: `${pct.toFixed(1)}%`, cls: 'down' }
+    return { text: '持平', cls: 'flat' }
+  }
+
+  const build = (key: string, label: string, cur: number, cmp: number, fmtCur: string, fmtCmp: string, isOrder: boolean) => {
+    const d = deltaText(cur, cmp, isOrder)
+    return { key, label, mainValue: fmtCur, cmpValue: hasCompare ? fmtCmp : undefined, delta: d?.text, deltaClass: d?.cls }
+  }
 
   return [
-    { 
-      key: 'gmv', 
-      label: '总销售额', 
-      value: formatCurrency(totalGmv)
-    },
-    { 
-      key: 'orders', 
-      label: '总订单数', 
-      value: formatNumber(totalOrders, 0, '单')
-    },
-    { 
-      key: 'visitors', 
-      label: '总访客数', 
-      value: formatNumber(totalVisitors, 0, '人')
-    },
-    { 
-      key: 'spend', 
-      label: '总广告花费', 
-      value: formatCurrency(totalSpend)
-    },
-    { 
-      key: 'aov', 
-      label: '平均客单价', 
-      value: formatCurrency(avgOrderValue)
-    },
-    { 
-      key: 'roas', 
-      label: '总ROAS', 
-      value: formatNumber(roas, 2, '')
-    },
-    { 
-      key: 'conversion', 
-      label: '转化率', 
-      value: formatNumber(conversionRate, 2, '%')
-    }
+    build('gmv', '总销售额', totalGmv, cmpGmv, formatCurrency(totalGmv), formatCurrency(cmpGmv), false),
+    build('orders', '总订单数', totalOrders, cmpOrders, formatNumber(totalOrders, 0, '单'), formatNumber(cmpOrders, 0, '单'), true),
+    build('visitors', '总访客数', totalVisitors, cmpVisitors, formatNumber(totalVisitors, 0, '人'), formatNumber(cmpVisitors, 0, '人'), false),
+    build('spend', '总广告花费', totalSpend, cmpSpend, formatCurrency(totalSpend), formatCurrency(cmpSpend), false),
+    build('aov', '平均客单价', avgOrderValue, cmpAov, formatCurrency(avgOrderValue), formatCurrency(cmpAov), false),
+    build('roas', '总ROAS', roas, cmpRoas, formatNumber(roas, 2, ''), formatNumber(cmpRoas, 2, ''), false),
+    build('conversion', '转化率', convRate, cmpConv, formatNumber(convRate, 2, '%'), formatNumber(cmpConv, 2, '%'), false)
   ]
 })
 
-// 格式化货币（美元）
-const formatCurrency = (num: number): string => {
-  return '$' + num.toFixed(2)
-}
-
-// 格式化数字（非货币）
-const formatNumber = (num: number, decimals: number, unit: string): string => {
-  return num.toFixed(decimals) + unit
-}
+const formatCurrency = (num: number): string => '$' + num.toFixed(2)
+const formatNumber = (num: number, decimals: number, unit: string): string => num.toFixed(decimals) + unit
 </script>
 
 <style scoped>
-.dashboard-summary {
-  margin-bottom: 20px;
-}
-
+.dashboard-summary { margin-bottom: 20px; }
 .summary-grid {
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-
-@media (min-width: 640px) {
-  .summary-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1024px) {
-  .summary-grid {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-  }
-}
-
+@media (min-width: 640px) { .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .summary-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
 .summary-card {
-  text-align: center;
-  transition: all 0.3s;
-  min-height: 108px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  text-align: center; transition: all 0.3s; min-height: 145px;
+  display: flex; align-items: center; justify-content: center;
 }
+.summary-card:hover { transform: translateY(-2px); }
+.summary-content { padding: 10px 6px; width: 100%; box-sizing: border-box; overflow: hidden; }
+.summary-label { font-size: 13px; color: var(--el-text-color-regular); margin-bottom: 6px; }
 
-.summary-card:hover {
-  transform: translateY(-2px);
-}
+.summary-cols { display: flex; justify-content: center; gap: 12px; margin-bottom: 4px; }
+.summary-col { text-align: center; min-width: 0; }
+.summary-tag { font-size: 10px; color: var(--el-text-color-placeholder); margin-bottom: 2px; white-space: nowrap; }
 
-.summary-content {
-  padding: 12px 8px;
-  width: 100%;
-  box-sizing: border-box;
-  overflow: hidden;
-}
+.summary-main { font-size: 17px; font-weight: 600; color: var(--el-text-color-primary); white-space: nowrap; }
+.summary-cmp { font-size: 14px; font-weight: 500; color: var(--el-text-color-secondary); white-space: nowrap; }
 
-.summary-label {
-  font-size: 14px;
-  color: var(--el-text-color-regular);
-  margin-bottom: 8px;
-}
-
-.summary-value {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  white-space: nowrap;
-  overflow: visible;
-  text-overflow: clip;
-  line-height: 1.2;
-}
+.summary-delta { font-size: 17px; font-weight: 600; margin-top: 2px; white-space: nowrap; }
+.summary-delta.up { color: #e53935; }
+.summary-delta.down { color: #43a047; }
+.summary-delta.flat { color: #9e9e9e; }
 </style>
 

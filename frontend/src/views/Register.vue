@@ -6,8 +6,8 @@
     brand-subtitle=""
   >
     <template #brand-icon>
-      <div class="auth-brand-icon-box flex h-16 w-16 -rotate-6 items-center justify-center rounded-2xl bg-white shadow-2xl">
-        <el-icon class="text-3xl text-purple-600">
+      <div class="auth-brand-icon-box flex h-16 w-16 -rotate-6 items-center justify-center rounded-2xl bg-white/70">
+        <el-icon class="text-3xl text-violet-500" style="filter: drop-shadow(0 0 8px rgba(139,92,246,0.4))">
           <UserFilled />
         </el-icon>
       </div>
@@ -54,7 +54,7 @@
 
       <el-button
         type="primary"
-        class="auth-submit-btn auth-submit-btn--purple"
+        class="auth-submit-btn auth-submit-btn--violet"
         :loading="loading"
         @click="handleRegister"
       >
@@ -67,9 +67,9 @@
     </div>
 
     <div class="mt-6 text-center">
-      <p class="text-sm text-slate-500">
+      <p class="text-sm text-slate-400">
         已有账号？
-        <router-link to="/login" class="font-semibold text-purple-600 transition-colors hover:text-purple-500">
+        <router-link to="/login" class="font-semibold text-violet-500 transition-all hover:text-cyan-500" style="text-shadow: 0 0 12px rgba(139,92,246,0.3)">
           去登录
         </router-link>
       </p>
@@ -180,11 +180,5 @@ const handleRegister = async () => {
 </script>
 
 <style scoped>
-.auth-submit-btn--purple {
-  --auth-primary: var(--auth-register-primary);
-  --auth-primary-hover: var(--auth-register-primary-hover);
-}
 </style>
-
-
 

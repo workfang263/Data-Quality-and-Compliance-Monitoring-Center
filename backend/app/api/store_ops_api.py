@@ -250,6 +250,11 @@ async def get_store_ops_report(
             s, start_date, end_date
         )
     merge_fb_spend_into_payload(payload, spend_by_shop_slug)
+    # 注入店铺显示名称
+    display_names = db.get_store_display_names(shops)
+    for shop in payload.get("shops") or []:
+        domain = shop.get("shop_domain") or ""
+        shop["display_name"] = display_names.get(domain) or None
     return {"code": 200, "message": "success", "data": payload}
 
 

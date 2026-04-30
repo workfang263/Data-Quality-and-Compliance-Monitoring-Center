@@ -4,7 +4,7 @@
     <section class="auth-brand-panel relative hidden overflow-hidden lg:flex lg:w-1/2 items-center justify-center p-12">
       <div class="auth-brand-overlay absolute inset-0"></div>
 
-      <div class="relative z-10 max-w-md text-center text-white">
+      <div class="relative z-10 max-w-md text-center text-slate-800">
         <div class="mb-8 flex items-center justify-center">
           <slot name="brand-icon">
             <div class="auth-brand-icon-box flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-2xl">
@@ -17,7 +17,7 @@
         <p v-if="brandSubtitle" class="auth-brand-subtitle text-xl">{{ brandSubtitle }}</p>
       </div>
 
-      <p class="auth-brand-version absolute bottom-4 left-6 text-xs text-white/70">{{ versionText }}</p>
+      <p class="auth-brand-version auth-version-text absolute bottom-4 left-6 text-xs text-slate-400">{{ versionText }}</p>
     </section>
 
     <!-- 右侧表单区：始终可见，承载具体登录/注册交互 -->

@@ -5,6 +5,7 @@ import request from './request'
 
 export interface StoreOpsReportShop {
   shop_domain: string
+  display_name: string | null
   public_pool_sales_total: number
   public_pool_order_count: number
   employee_rows: Array<{
