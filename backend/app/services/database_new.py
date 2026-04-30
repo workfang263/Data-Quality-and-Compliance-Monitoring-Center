@@ -2062,10 +2062,8 @@ class Database:
     def update_store_owner_mapping(self, shop_domain: str, owner: str, display_name: Optional[str] = None) -> Optional[List[date]]:
         """
         更新店铺-负责人映射（如果不存在则插入）
-        同时更新历史数据表中的 owner 字段
-        返回受影响的日期列表（用于重新聚合）
+        仅 owner 变化时才更新历史数据并返回受影响日期，仅 display_name 变化时跳过
         """
-        # 检查 display_name 唯一性（非空时不可与其他店铺重复）
         conflict = self.check_display_name_unique(shop_domain, display_name)
         if conflict:
             logger.warning(f"display_name '{display_name}' 已被店铺 {conflict} 占用")
@@ -2074,7 +2072,13 @@ class Database:
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
-                    # 1. 更新映射表（display_name 可选）
+                    # 查询当前 owner，判断是否需要重新聚合
+                    cursor.execute("SELECT owner FROM store_owner_mapping WHERE shop_domain = %s", (shop_domain,))
+                    old_row = cursor.fetchone()
+                    old_owner = old_row.get('owner') if old_row else None
+                    owner_changed = (old_owner != owner)
+
+                    # 更新映射表
                     sql = """
                         INSERT INTO store_owner_mapping (shop_domain, owner, display_name, updated_at)
                         VALUES (%s, %s, %s, NOW())
@@ -2084,8 +2088,13 @@ class Database:
                             updated_at = NOW()
                     """
                     cursor.execute(sql, (shop_domain, owner, display_name))
-                    
-                    # 2. 获取受影响的日期列表（在更新前获取，避免更新后查询不到旧数据）
+
+                    if not owner_changed:
+                        conn.commit()
+                        logger.info(f"更新店铺映射成功(仅名称): {shop_domain} -> {owner}, owner未变, 跳过历史更新和重新聚合")
+                        return []
+
+                    # owner 变了才更新历史数据
                     affected_dates_sql = """
                         SELECT DISTINCT DATE(time_hour) as affected_date
                         FROM shoplazza_store_hourly
@@ -2103,7 +2112,7 @@ class Database:
                     """
                     cursor.execute(update_sql, (owner, shop_domain))
                     updated_rows = cursor.rowcount
-                    
+
                     conn.commit()
                     logger.info(f"更新店铺映射成功: {shop_domain} -> {owner}, 更新了 {updated_rows} 条历史记录, 影响 {len(affected_dates)} 个日期")
                     return affected_dates
