@@ -60,7 +60,7 @@
                 <el-input-number
                   v-model="filters.startHour"
                   :min="0"
-                  :max="23"
+                  :max="maxMainStartHour"
                   :precision="0"
                   controls-position="right"
                   style="width: 100px"
@@ -69,7 +69,7 @@
                 <span style="margin: 0 8px; color: #909399;">时 至</span>
                 <el-input-number
                   v-model="filters.endHour"
-                  :min="0"
+                  :min="minMainEndHour"
                   :max="maxMainEndHour"
                   :precision="0"
                   controls-position="right"
@@ -103,7 +103,7 @@
                 <el-input-number
                   v-model="filters.cmpStartHour"
                   :min="0"
-                  :max="23"
+                  :max="maxCmpStartHour"
                   :precision="0"
                   controls-position="right"
                   style="width: 100px"
@@ -112,7 +112,7 @@
                 <span style="margin: 0 8px; color: #909399;">时 至</span>
                 <el-input-number
                   v-model="filters.cmpEndHour"
-                  :min="0"
+                  :min="minCmpEndHour"
                   :max="maxCmpEndHour"
                   :precision="0"
                   controls-position="right"
@@ -218,9 +218,29 @@ const maxMainEndHour = computed(() => {
   return 23
 })
 
+const maxMainStartHour = computed(() => {
+  if (filters.value.endHour == null) return 23
+  return Math.max((filters.value.endHour as number) - 1, 0)
+})
+
+const minMainEndHour = computed(() => {
+  if (filters.value.startHour == null) return 0
+  return Math.min((filters.value.startHour as number) + 1, 23)
+})
+
 const maxCmpEndHour = computed(() => {
   if (filters.value.cmpEndDate === todayDateStr.value) return ceiledHour.value
   return 23
+})
+
+const maxCmpStartHour = computed(() => {
+  if (filters.value.cmpEndHour == null) return 23
+  return Math.max((filters.value.cmpEndHour as number) - 1, 0)
+})
+
+const minCmpEndHour = computed(() => {
+  if (filters.value.cmpStartHour == null) return 0
+  return Math.min((filters.value.cmpStartHour as number) + 1, 23)
 })
 
 // 监听props变化

@@ -20,7 +20,7 @@
       您没有权限查看看板总数据，请联系管理员授权
     </el-alert>
     
-    <div v-loading="!isInitialLoad && loading">
+    <div>
       <DashboardSummary 
         v-if="data.length > 0 && (canViewDashboard || !isAllStores)" 
         :data="data" 
@@ -76,7 +76,6 @@ import { getCurrentUser } from '../api/auth'
 import PageShell from '../components/PageShell.vue'
 import PageHeaderBar from '../components/PageHeaderBar.vue'
 
-const loading = ref(false)
 const isInitialLoad = ref(true)
 const error = ref('')
 const data = ref<DashboardDataItem[]>([])
@@ -144,7 +143,6 @@ const checkUserPermissions = async () => {
 }
 
 const fetchDashboardData = async () => {
-  loading.value = true
   error.value = ''
 
   try {
@@ -176,8 +174,6 @@ const fetchDashboardData = async () => {
   } catch (err: any) {
     console.error('获取看板数据失败:', err)
     error.value = err.message || '获取数据失败'
-  } finally {
-    loading.value = false
   }
 }
 
